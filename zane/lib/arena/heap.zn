@@ -1,11 +1,13 @@
 package arena;
 import core$;
+// Vertices and priorities are bounded by the graph size, so entries are
+// stored at 32 bits.
 type Entry = struct {
-  vertex Int;
-  priority Int;
+  vertex I32;
+  priority I32;
 }
 
-Entry(vertex Int, priority Int) => init {
+Entry(vertex I32, priority I32) => init {
   vertex;
   priority;
 }
@@ -20,7 +22,7 @@ Heap() => init {
   heapSize=Int(0);
 }
 
-Int bubble(this Heap, index Int, priority Int) mut {
+Int bubble(this Heap, index Int, priority I32) mut {
   i Int=index;
   k Int=Int(1);
   k!to(this.heapSize) {
@@ -37,7 +39,9 @@ Int bubble(this Heap, index Int, priority Int) mut {
   return i;
 }
 
-Unit push(this Heap, vertex Int, priority Int) mut {
+Unit push(this Heap, vertexValue Int, priorityValue Int) mut {
+  vertex I32=I32.wrap(vertexValue);
+  priority I32=I32.wrap(priorityValue);
   this.heapSize=this.heapSize+1;
   full Bool=if(this.heapSize>this.items:size()) {
     this.items!push(Entry(vertex, priority));

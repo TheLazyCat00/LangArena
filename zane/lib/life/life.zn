@@ -5,13 +5,14 @@ import arena$;
 type Cell = #struct {
   alive Bool;
   next Bool;
-  neighbors List<Int>;
+  // Neighbor cell indices are at most w*h.
+  neighbors List<I32>;
 }
 
 Cell() => init {
   alive=Bool(false);
   next=Bool(false);
-  neighbors=List(Int);
+  neighbors=List(I32);
 }
 
 type State = #struct {
@@ -45,7 +46,7 @@ Unit prepare(this State) mut {
           if(dx~=0 or dy~=0) {
             ny Int=rem(y+dy+this.h, this.h);
             nx Int=rem(x+dx+this.w, this.w);
-            this.cells[index].neighbors!push(ny*this.w+nx+1);
+            this.cells[index].neighbors!push(I32.wrap(ny*this.w+nx+1));
           }
         }
       }
@@ -61,7 +62,7 @@ Unit step(this State, iteration Int) mut {
     alive Int=Int(0);
     j Int=Int(1);
     j!to(this.cells[i].neighbors:size()) {
-      if(this.cells[this.cells[i].neighbors[j]].alive) {
+      if(this.cells[Int(this.cells[i].neighbors[j])].alive) {
         alive=alive+1;
       }
     }

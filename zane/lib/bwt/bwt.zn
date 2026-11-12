@@ -13,13 +13,15 @@ Encoded(data String, original Int) => init {
   original;
 }
 
+// Suffix positions and ranks are at most the input length, so both lists
+// hold 32-bit values; the doubling offset stays an Int.
 type Suffixes = #struct {
-  indices List<Int>;
-  rank List<Int>;
+  indices List<I32>;
+  rank List<I32>;
   offset Int;
 }
 
-Suffixes(indices List<Int>, rank List<Int>, offset Int) => init {
+Suffixes(indices List<I32>, rank List<I32>, offset Int) => init {
   indices;
   rank;
   offset;
@@ -33,8 +35,8 @@ Int compare(this Suffixes, a Int, b Int) {
     return Int(1);
   }
   n Int=this.rank:size();
-  left Int=this.rank[rem(a-1+this.offset, n)+1];
-  right Int=this.rank[rem(b-1+this.offset, n)+1];
+  left I32=this.rank[rem(a-1+this.offset, n)+1];
+  right I32=this.rank[rem(b-1+this.offset, n)+1];
   if(left<right) {
     return ~Int(1);
   }
@@ -48,7 +50,7 @@ Int up(this Suffixes, index Int, pivot Int, high Int) {
   i Int=index;
   k Int=Int(1);
   k!to(high-index+1) {
-    if(this:compare(this.indices[i], pivot)>=0) {
+    if(this:compare(Int(this.indices[i]), pivot)>=0) {
       return i;
     }
     i=i+1;
@@ -60,7 +62,7 @@ Int down(this Suffixes, index Int, pivot Int, low Int) {
   i Int=index;
   k Int=Int(1);
   k!to(index-low+1) {
-    if(this:compare(this.indices[i], pivot)<=0) {
+    if(this:compare(Int(this.indices[i]), pivot)<=0) {
       return i;
     }
     i=i-1;
@@ -79,7 +81,7 @@ Partition(left Int, right Int) => init {
 }
 
 Partition partition(this Suffixes, low Int, high Int) mut {
-  pivot Int=this.indices[(low+high)/2];
+  pivot Int=Int(this.indices[(low+high)/2]);
   i Int=low;
   j Int=high;
   k Int=Int(1);
@@ -90,7 +92,7 @@ Partition partition(this Suffixes, low Int, high Int) mut {
     i=this:up(i, pivot, high);
     j=this:down(j, pivot, low);
     if(i<=j) {
-      v Int=this.indices[i];
+      v I32=this.indices[i];
       this.indices[i]=this.indices[j];
       this.indices[j]=v;
       i=i+1;
@@ -124,21 +126,21 @@ Encoded encode(input String) {
     positions[i]=total;
     total=total+counts[i];
   }
-  indices List<Int> = filled(n, Int(0));
+  indices List<I32> = filled(n, I32(0));
   seen List<Int> = filled(Int(256), Int(0));
   j Int=Int(1);
   j!to(n) {
     value Int=byte(inputBytes, j)+1;
     position Int=positions[value]+seen[value]+1;
-    indices[position]=j;
+    indices[position]=I32.wrap(j);
     seen[value]=seen[value]+1;
   }
-  ranks List<Int> = filled(n, Int(0));
-  current Int=Int(0);
-  previous Int=byte(inputBytes, indices[Int(1)]);
+  ranks List<I32> = filled(n, I32(0));
+  current I32=I32(0);
+  previous Int=byte(inputBytes, Int(indices[Int(1)]));
   p Int=Int(1);
   p!to(n) {
-    index Int=indices[p];
+    index Int=Int(indices[p]);
     value Int=byte(inputBytes, index);
     if(value~=previous) {
       current=current+1;
@@ -151,14 +153,14 @@ Encoded encode(input String) {
   round!to(Int(63)) {
     if(suffixes.offset<n) {
       suffixes!sort(Int(1), n);
-      nextRanks List<Int> = filled(n, Int(0));
+      nextRanks List<I32> = filled(n, I32(0));
       q Int=Int(2);
       q!to(n) {
-        prior Int=suffixes.indices[q-1];
-        index Int=suffixes.indices[q];
-        delta Int=Int(0);
+        prior Int=Int(suffixes.indices[q-1]);
+        index Int=Int(suffixes.indices[q]);
+        delta I32=I32(0);
         if(suffixes:compare(prior, index)~=0) {
-          delta=Int(1);
+          delta=I32(1);
         }
         nextRanks[index]=nextRanks[prior]+delta;
       }
@@ -170,7 +172,7 @@ Encoded encode(input String) {
   original Int=Int(1);
   q Int=Int(1);
   q!to(n) {
-    suffix Int=suffixes.indices[q];
+    suffix Int=Int(suffixes.indices[q]);
     first Bool=if(suffix==1) {
       out!push(byte(inputBytes, n));
       original=q;
@@ -196,20 +198,20 @@ String decode(encoded Encoded) {
     positions[i]=total;
     total=total+counts[i];
   }
-  next List<Int> = filled(n, Int(0));
+  next List<I32> = filled(n, I32(0));
   seen List<Int> = filled(Int(256), Int(0));
   j Int=Int(1);
   j!to(n) {
     value Int=byte(inputBytes, j)+1;
     position Int=positions[value]+seen[value]+1;
-    next[position]=j;
+    next[position]=I32.wrap(j);
     seen[value]=seen[value]+1;
   }
   out Buffer=buffer(Int(0), Int(0));
   index Int=encoded.original;
   k Int=Int(1);
   k!to(n) {
-    index=next[index];
+    index=Int(next[index]);
     out!push(byte(inputBytes, index));
   }
   return out:string();

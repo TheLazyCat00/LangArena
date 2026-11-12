@@ -6,7 +6,8 @@ type State = #struct {
   vertices Int;
   jumps Int;
   jumpLength Int;
-  adj List<List<Int>>;
+  // Vertex ids are at most `vertices`, so adjacency lists hold 32-bit ids.
+  adj List<List<I32>>;
   rng Rng;
   result Int;
   mode Int;
@@ -16,7 +17,7 @@ State(cfg Config, name String) => init {
   vertices=cfg:integer(name, "vertices");
   jumps=cfg:integer(name, "jumps");
   jumpLength=cfg:integer(name, "jump_len");
-  adj=List(List<Int>);
+  adj=List(List<I32>);
   rng=Rng();
   result=Int(0);
   mode=Int(0);
@@ -25,8 +26,8 @@ State(cfg Config, name String) => init {
 Unit edge(this State, a Int, b Int) mut {
   left Int=a;
   right Int=b;
-  this.adj[left]!push(right);
-  this.adj[right]!push(left);
+  this.adj[left]!push(I32.wrap(right));
+  this.adj[right]!push(I32.wrap(left));
   return Unit();
 }
 
@@ -34,7 +35,7 @@ Unit prepare(this State) mut {
   vertices Int=this.vertices;
   i Int=Int(1);
   i!to(vertices) {
-    this.adj!push(List(Int));
+    this.adj!push(List(I32));
   }
   j Int=Int(2);
   j!to(vertices) {
@@ -55,14 +56,15 @@ Unit prepare(this State) mut {
   return Unit();
 }
 
+// A distance is at most the vertex count, so a visit is two 32-bit values.
 type Visit = struct {
-  vertex Int;
-  distance Int;
+  vertex I32;
+  distance I32;
 }
 
 Visit(vertex Int, distance Int) => init {
-  vertex;
-  distance;
+  vertex=I32.wrap(vertex);
+  distance=I32.wrap(distance);
 }
 
 Int bfs(this State) {
@@ -78,15 +80,17 @@ Int bfs(this State) {
     }
     visit Visit=queue[read];
     read=read+1;
+    vertex Int=Int(visit.vertex);
+    distance Int=Int(visit.distance)+1;
     j Int=Int(1);
-    j!to(this.adj[visit.vertex]:size()) {
-      neighbor Int=this.adj[visit.vertex][j];
+    j!to(this.adj[vertex]:size()) {
+      neighbor Int=Int(this.adj[vertex][j]);
       if(neighbor==this.vertices) {
-        return visit.distance+1;
+        return distance;
       }
       if(~visited[neighbor]) {
         visited[neighbor]=Bool(true);
-        queue!push(Visit(neighbor, visit.distance+1));
+        queue!push(Visit(neighbor, distance));
       }
     }
   }
@@ -107,17 +111,19 @@ Int dfs(this State) {
       return best;
     }
     visit Visit=stack!remove(stack:size());
-    if(~visited[visit.vertex] and visit.distance<best) {
-      visited[visit.vertex]=Bool(true);
+    vertex Int=Int(visit.vertex);
+    distance Int=Int(visit.distance);
+    if(~visited[vertex] and distance<best) {
+      visited[vertex]=Bool(true);
       j Int=Int(1);
-      j!to(this.adj[visit.vertex]:size()) {
-        neighbor Int=this.adj[visit.vertex][j];
+      j!to(this.adj[vertex]:size()) {
+        neighbor Int=Int(this.adj[vertex][j]);
         target Bool=if(neighbor==this.vertices) {
-          best=min(best, visit.distance+1);
+          best=min(best, distance+1);
         }
         target:else() {
           if(~visited[neighbor]) {
-            stack!push(Visit(neighbor, visit.distance+1));
+            stack!push(Visit(neighbor, distance+1));
           }
         }
       }
@@ -127,10 +133,10 @@ Int dfs(this State) {
 }
 
 Int astar(this State) {
-  score List<Int> = filled(this.vertices, Int(2147483647));
-  best List<Int> = filled(this.vertices, Int(2147483647));
-  score[Int(1)]=Int(0);
-  best[Int(1)]=this.vertices-1;
+  score List<I32> = filled(this.vertices, I32(2147483647));
+  best List<I32> = filled(this.vertices, I32(2147483647));
+  score[Int(1)]=I32(0);
+  best[Int(1)]=I32.wrap(this.vertices-1);
   open Heap=Heap();
   open!push(Int(1), this.vertices-1);
   iteration Int=Int(1);
@@ -139,19 +145,19 @@ Int astar(this State) {
       return ~Int(1);
     }
     entry Entry=open!pop();
-    current Int=entry.vertex;
+    current Int=Int(entry.vertex);
     if(current==this.vertices) {
-      return score[current];
+      return Int(score[current]);
     }
     j Int=Int(1);
     j!to(this.adj[current]:size()) {
-      neighbor Int=this.adj[current][j];
-      tentative Int=score[current]+1;
-      if(tentative<score[neighbor]) {
-        score[neighbor]=tentative;
+      neighbor Int=Int(this.adj[current][j]);
+      tentative Int=Int(score[current])+1;
+      if(tentative<Int(score[neighbor])) {
+        score[neighbor]=I32.wrap(tentative);
         priority Int=tentative+this.vertices-neighbor;
-        if(priority<best[neighbor]) {
-          best[neighbor]=priority;
+        if(priority<Int(best[neighbor])) {
+          best[neighbor]=I32.wrap(priority);
           open!push(neighbor, priority);
         }
       }

@@ -2,30 +2,31 @@ package sort;
 import core$;
 import math$;
 import arena$;
+// Values are drawn below 1,000,000, so every list holds 32-bit integers.
 type State = #struct {
-  data List<Int>;
-  work List<Int>;
-  temp List<Int>;
+  data List<I32>;
+  work List<I32>;
+  temp List<I32>;
   rng Rng;
   result Int;
   mode Int;
-  raw @primitives$List<@primitives$I64>;
+  raw @primitives$List<@primitives$I32>;
 }
 
 State(cfg Config, name String) => init {
-  data=filled(cfg:integer(name, "size"), Int(0));
-  work=List(Int);
-  temp=List(Int);
+  data=filled(cfg:integer(name, "size"), I32(0));
+  work=List(I32);
+  temp=List(I32);
   rng=Rng();
   result=Int(0);
   mode=Int(0);
-  raw=@primitives$List(@primitives$I64);
+  raw=@primitives$List(@primitives$I32);
 }
 
 Unit prepare(this State) mut {
   i Int=Int(1);
   i!to(this.data:size()) {
-    value Int=this.rng!next(Int(1000000));
+    value I32=I32.wrap(this.rng!next(Int(1000000)));
     mode Bool=if(this.mode==2) {
       this.raw!push(value);
     }
@@ -34,12 +35,12 @@ Unit prepare(this State) mut {
     }
   }
   if(this.mode==2) {
-    this.data=List(Int);
+    this.data=List(I32);
   }
   return Unit();
 }
 
-Int scanUp(this State, start Int, pivot Int, high Int) {
+Int scanUp(this State, start Int, pivot I32, high Int) {
   i Int=start;
   k Int=Int(1);
   k!to(high-start+1) {
@@ -51,7 +52,7 @@ Int scanUp(this State, start Int, pivot Int, high Int) {
   return i;
 }
 
-Int scanDown(this State, start Int, pivot Int, low Int) {
+Int scanDown(this State, start Int, pivot I32, low Int) {
   i Int=start;
   k Int=Int(1);
   k!to(start-low+1) {
@@ -74,7 +75,7 @@ Partition(left Int, right Int) => init {
 }
 
 Partition partition(this State, low Int, high Int) mut {
-  pivot Int=this.work[(low+high)/2];
+  pivot I32=this.work[(low+high)/2];
   i Int=low;
   j Int=high;
   k Int=Int(1);
@@ -85,7 +86,7 @@ Partition partition(this State, low Int, high Int) mut {
     i=this:scanUp(i, pivot, high);
     j=this:scanDown(j, pivot, low);
     if(i<=j) {
-      v Int=this.work[i];
+      v I32=this.work[i];
       this.work[i]=this.work[j];
       this.work[j]=v;
       i=i+1;
@@ -147,25 +148,25 @@ Unit step(this State, iteration Int) mut {
   if(mode==2) {
     n Int=Int(this.raw:size());
     index Int=this.rng!next(n)+1;
-    this.result=u32(this.result+Int(this.raw[index]));
+    this.result=u32(this.result+Int(I32(this.raw[index])));
     sorted Sorted=standardSort(this.raw);
     index=this.rng!next(n)+1;
     this.result=u32(this.result+sorted:get(index));
     return Unit();
   }
   index Int=this.rng!next(this.data:size())+1;
-  this.result=u32(this.result+this.data[index]);
+  this.result=u32(this.result+Int(this.data[index]));
   this.work=this.data;
   n Int=this.work:size();
   merge Bool=if(mode==1) {
-    this.temp=filled(n, Int(0));
+    this.temp=filled(n, I32(0));
     this!merge(Int(1), n);
   }
   merge:else() {
     this!quick(Int(1), n);
   }
   index=this.rng!next(n)+1;
-  this.result=u32(this.result+this.work[index]);
+  this.result=u32(this.result+Int(this.work[index]));
   return Unit();
 }
 

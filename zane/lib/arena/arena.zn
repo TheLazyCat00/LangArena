@@ -109,7 +109,7 @@ Unit clear(this Buffer) mut {
 Int get(this Sorted, index Int) => Int(this:_ffiSortedGet(index));
 ^Config parse(text @primitives$String) foreign "arena_parse";
 ^Buffer buffer(n @primitives$I64, value @primitives$I64) foreign "arena_buffer_new";
-^Sorted standardSort(input @primitives$List<@primitives$I64>) foreign "arena_sort";
+^Sorted standardSort(input @primitives$List<@primitives$I32>) foreign "arena_sort";
 Int u32(value Int) => bitAnd(value, Int(4294967295));
 Int rem(value Int, divisor Int) => value-value/divisor*divisor;
 Int hash(text String) {
@@ -166,6 +166,16 @@ List<Int> filled(n Int, value Int) {
   i Int=Int(1);
   i!to(n) {
     copy Int=value;
+    out!push(copy);
+  }
+  return out;
+}
+
+List<I32> filled(n Int, value I32) {
+  out List<I32> = List(I32);
+  i Int=Int(1);
+  i!to(n) {
+    copy I32=value;
     out!push(copy);
   }
   return out;

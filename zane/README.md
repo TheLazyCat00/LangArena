@@ -1,7 +1,7 @@
 # Zane
 
 All 50 LangArena workloads, ported from the Crystal reference. The manifest
-pins compiler **v0.31** and core **v0.8**.
+pins compiler **v0.31** and core **v0.9**.
 
 ## Run
 
@@ -42,7 +42,7 @@ runtime pool before measurement.
 
 ## C boundary and layouts
 
-C supplies APIs missing from core v0.8: JSON through yyjson, CSV parsing,
+C supplies APIs missing from core v0.9: JSON through yyjson, CSV parsing,
 Base64, POSIX regular expressions, mutable byte storage, string byte access,
 decimal formatting, file input, timing, and `qsort` for `Sort::Self`.
 Foreign data handles own their allocations. Only the root's foreign `Host`
@@ -50,8 +50,14 @@ capability reads files, observes clocks, prints, or exits; computation
 bindings have no mutable global state.
 
 Graph connectivity, maze cells, and calculator AST links use indices into
-native containers. Value records use core's 64-bit `Int`; byte workloads
-use a C-backed byte buffer. These layouts affect memory and speed.
+native containers. Bulk integer data whose range is bounded by the workload
+size is stored as core's 32-bit `I32`: graph and maze adjacency, Life
+neighbors, BWT suffix positions and ranks, sort inputs (including the
+`qsort` copy for `Sort::Self`), binary-tree arena nodes, and priority-queue
+entries. Counters, indices, checksums, hashes, RNG state, and the hash maps'
+values (the calculator stores 64-bit results there) use core's 64-bit `Int`.
+Byte workloads use a C-backed byte buffer. These layouts affect memory and
+speed.
 The reference's `Hash::SHA256` is a custom small hash; this implementation
 preserves it rather than substituting cryptographic SHA-256. The reference
 priority queue's exact sift/tie ordering is retained for traversal checksums.

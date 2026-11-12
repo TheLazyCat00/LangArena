@@ -32,16 +32,18 @@ Int sum(tree Tree) => match(tree) {
   b branch => b.item+1+sum(b.left)+sum(b.right);
 }
 
+// |item| stays below 2^depth and links are node indices below 2^(depth+1),
+// so an arena node is three 32-bit values.
 type Node = struct {
-  item Int;
-  left Int;
-  right Int;
+  item I32;
+  left I32;
+  right I32;
 }
 
 Node(item Int, left Int, right Int) => init {
-  item;
-  left;
-  right;
+  item=I32.wrap(item);
+  left=I32.wrap(left);
+  right=I32.wrap(right);
 }
 
 type State = #struct {
@@ -72,12 +74,12 @@ Int build(this State, item Int, depth Int) mut {
 
 Int sum(this State, index Int) {
   node Node=this.nodes[index];
-  total Int=node.item+1;
+  total Int=Int(node.item)+1;
   if(node.left>0) {
-    total=total+this:sum(node.left);
+    total=total+this:sum(Int(node.left));
   }
   if(node.right>0) {
-    total=total+this:sum(node.right);
+    total=total+this:sum(Int(node.right));
   }
   return total;
 }

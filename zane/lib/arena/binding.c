@@ -266,20 +266,21 @@ zane_bytes arena_buffer_text(const arena_buffer *b) {
 }
 void arena_buffer_clear(arena_buffer *b) { b->size = 0; }
 struct arena_sorted {
-  int64_t *data;
+  int32_t *data;
   size_t size;
 };
 static int compare_ints(const void *a, const void *b) {
-  int64_t x = *(const int64_t *)a, y = *(const int64_t *)b;
+  int32_t x = *(const int32_t *)a, y = *(const int32_t *)b;
   return (x > y) - (x < y);
 }
+// `input` is a list of 32-bit integers.
 arena_sorted *arena_sort(zane_span input) {
   arena_sorted *s = alloc(sizeof(*s));
   s->size = input.count;
-  s->data = alloc(input.count * sizeof(int64_t));
+  s->data = alloc(input.count * sizeof(int32_t));
   if (input.count)
-    memcpy(s->data, input.data, input.count * sizeof(int64_t));
-  qsort(s->data, s->size, sizeof(int64_t), compare_ints);
+    memcpy(s->data, input.data, input.count * sizeof(int32_t));
+  qsort(s->data, s->size, sizeof(int32_t), compare_ints);
   return s;
 }
 int64_t arena_sorted_get(const arena_sorted *s, int64_t i) {

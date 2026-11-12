@@ -74,7 +74,8 @@ String city(index Int) {
 type State = #struct {
   count Int;
   text Buffer;
-  rendered String;
+  source String;
+  rendered Buffer;
   variables StringMap;
   values List<String>;
   pattern Regex;
@@ -85,7 +86,8 @@ type State = #struct {
 State(cfg Config, name String) => init {
   count=cfg:integer(name, "count");
   text=buffer(Int(0), Int(0));
-  rendered=String("");
+  source=String("");
+  rendered=buffer(Int(0), Int(0));
   variables=StringMap(cfg:integer(name, "count")*6+20);
   values=List(String);
   pattern=regex("[{][{]([^}]*)[}][}]", Bool(false));
@@ -118,25 +120,38 @@ Unit prepare(this State) mut {
   }
   out!append("</table></body></html>");
   this.text=out;
+  this.source=this.text:string();
   return Unit();
 }
 
-String trim(text String) {
-  start Int=Int(1);
-  finish Int=length(text);
+// The first position from `start` on that holds no space; past the end if
+// none does.
+Int firstKept(text String) {
   i Int=Int(1);
   i!to(length(text)) {
-    if(start<=finish) {
-      if(byte(text, start)==32) {
-        start=start+1;
-      }
-    }
-    if(finish>=start) {
-      if(byte(text, finish)==32) {
-        finish=finish-1;
-      }
+    if(byte(text, i)~=32) {
+      return i;
     }
   }
+  return length(text)+1;
+}
+
+// The last position down to `start` that holds no space; start-1 if none.
+Int lastKept(text String, start Int) {
+  i Int=length(text);
+  steps Int=Int(1);
+  steps!to(length(text)-start+1) {
+    if(byte(text, i)~=32) {
+      return i;
+    }
+    i=i-1;
+  }
+  return start-1;
+}
+
+String trim(text String) {
+  start Int=firstKept(text);
+  finish Int=lastKept(text, start);
   return slice(text, start, finish-start+1);
 }
 
@@ -150,16 +165,18 @@ Int close(text Buffer, start Int) {
   return Int(0);
 }
 
-String lookup(this State, key String) {
-  index Int=this.variables:get(key);
-  if(index==0) {
-    return String("");
+// The value of the variable `key` in `state` appended; nothing for an
+// unknown name.
+Unit substitute(this Buffer, state State, key String) mut {
+  index Int=state.variables:get(key);
+  if(index>0) {
+    this!append(state.values[index]);
   }
-  return this.values[index];
+  return Unit();
 }
 
 Unit renderParse(this State) mut {
-  out Buffer=buffer(Int(0), Int(0));
+  out ^Buffer=buffer(Int(0), Int(0));
   i Int=Int(1);
   k Int=Int(1);
   k!to(length(this.text)) {
@@ -169,7 +186,7 @@ Unit renderParse(this State) mut {
         if(byte(this.text, i)==123 and byte(this.text, i+1)==123) {
           end Int=close(this.text, i+2);
           if(end>0) {
-            out!append(this:lookup(trim(slice(this.text, i+2, end-i-2))));
+            out!substitute(this, trim(slice(this.text, i+2, end-i-2)));
             i=end+2;
             replaced=Bool(true);
           }
@@ -181,24 +198,24 @@ Unit renderParse(this State) mut {
       }
     }
   }
-  this.rendered=out:string();
+  this.rendered=out;
   return Unit();
 }
 
 Unit renderRegex(this State) mut {
-  found Matches=regexMatches(this.pattern, this.text:string());
-  out Buffer=buffer(Int(0), Int(0));
+  found Matches=regexMatches(this.pattern, this.source);
+  out ^Buffer=buffer(Int(0), Int(0));
   position Int=Int(1);
   i Int=Int(1);
   i!to(found:count()) {
     start Int=found:get(i, Bool(false));
     end Int=found:get(i, Bool(true));
     out!append(slice(this.text, position, start-position));
-    out!append(this:lookup(trim(slice(this.text, start+2, end-start-4))));
+    out!substitute(this, trim(slice(this.text, start+2, end-start-4)));
     position=end;
   }
   out!append(slice(this.text, position, length(this.text)-position+1));
-  this.rendered=out:string();
+  this.rendered=out;
   return Unit();
 }
 
@@ -214,7 +231,7 @@ Unit step(this State, iteration Int) mut {
   return Unit();
 }
 
-Int checksum(this State) => u32(this.result+hash(this.rendered));
+Int checksum(this State) => u32(this.result+hash(this.rendered:string()));
 Unit resetRandom(this State) mut {
   return Unit();
 }

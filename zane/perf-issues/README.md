@@ -96,6 +96,34 @@ runtime asks for. Repros build with `zane build` in their directory.
   and data in registers inside the loop (see R5).
 - **Repro.** [`repros/list-fill`](repros/list-fill): `out/host/repro 1000000 1`
   (or `2` for the raw `repeat` form), under `valgrind --tool=callgrind`.
+- **Fixed** in [zane-lang/compiler#366](https://github.com/zane-lang/compiler/pull/366)
+  (`b7d1da3`). `Loop_shapes.leaving` counted every `leave` in a loop body as
+  a way out, and the `leave` that ends each written-out push (and the `to`
+  counter step) kept it from ever making room. All three such checks now
+  share `Cgt.Traverse.leaves`, which counts only a `leave` of an expansion
+  outside the loop. With room made, LLVM turns the fill into an SSE store
+  loop, about 0.6 instructions per element, so no alias metadata (R5) is
+  needed for it. The PR also stops the program, out of memory, on a count
+  whose bytes would wrap. Before, it took a block too small for room the
+  pushes no longer check. Callgrind instructions and minor page faults,
+  compiler `main` after #364 (21bb3a9) → #366, port unchanged, all 50
+  checksums OK:
+
+  | Program | Instructions before | after | Faults before | after |
+  | --- | ---: | ---: | ---: | ---: |
+  | `repros/list-fill 1000000 1` / `2` | 115.7M (134.6M on v0.32) | 6.66M | | |
+  | Graph::AStar | 22.79G | 8.61G | 21,192 | 21,011 |
+  | Maze::AStar | 10.53G | 5.75G | 176,844 | 184,612 |
+  | Maze::BFS | 5.09G | 3.47G | 53,043 | 53,149 |
+  | Compress::BWTEncode | 14.19G | 10.79G | 1,415 | 1,096 |
+  | Compress::BWTDecode | 21.39G | 18.95G | 84,753 | 84,189 |
+  | Graph::BFS | 13.11G | 12.88G | 21,279 | 21,282 |
+  | Graph::DFS | 7.87G | 7.78G | 20,166 | 20,165 |
+  | Compress::HuffDecode | 29.38G | 29.38G | 2,184 | 2,186 |
+
+  Graph::BFS / DFS and HuffDecode push only inside an `if`, which
+  `Loop_pushes` does not cover. What is left there is R5. Their faults are
+  R3.
 
 ### R3. A returned big list is copied, remapped, and unmapped every call
 
@@ -183,6 +211,14 @@ LLVM module. Not investigated further, since the absolute gap is 50 ms.
 - **Fix direction.** A core constructor backed by one allocation and a `memset`
   or a store loop the compiler can vectorise. This removes most of R2's cost on
   these tests even before `Loop_pushes` is fixed.
+- **Fixed** in [zane-lang/core#15](https://github.com/zane-lang/core/pull/15)
+  (`576949e`): `List<T>(n Int, value T)` makes `n` copies of `value`. Its loop
+  pushes through the raw primitive, so it gets room on today's compiler too,
+  and it needs no new compiler version. On compiler `main` without #366, a
+  port whose `filled` calls it runs the R2 table's "after" counts within 0.4%.
+  With #366, the counts match exactly. The port change is on LangArena branch
+  `zane-perf-list-fill` (872472e, off `zane-perf`). It builds once core tags a
+  release with #15 and the port's core pin moves to it.
 
 ### B2. `String(@primitives$String)` always copies
 

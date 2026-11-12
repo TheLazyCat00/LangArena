@@ -43,7 +43,8 @@ runtime pool before measurement.
 ## C boundary and layouts
 
 C supplies APIs missing from core v0.10: JSON through yyjson, CSV parsing,
-Base64, regular expressions through PCRE2 with its JIT (the system
+Base64 through aklomp/base64 (the library C links, with the codec it picks
+for the processor at run time), regular expressions through PCRE2 with its JIT (the system
 `libpcre2-8`, which C also links), mutable byte storage, string byte access,
 decimal formatting, file input, timing, and `qsort` for `Sort::Self`.
 Foreign data handles own their allocations. Only the root's foreign `Host`
@@ -76,11 +77,18 @@ PROD=1 ruby benchmarks.rb Zane
 
 The image pins CLI v0.15 with its SHA-256 and installs compiler v0.32.
 The suite records both versions. Source-size measurements include bindings
-and exclude vendored yyjson.
+and exclude everything under `lib/arena/vendor`.
 
 ## Dependency
 
 `lib/arena/vendor/yyjson.{c,h}` and `LICENSE` are from
 [ibireme/yyjson](https://github.com/ibireme/yyjson), commit
 `ebb8d7e5aaa51bea4edefb39ee73a235066b0023` (MIT).
+`lib/arena/vendor/base64` is the library part of
+[aklomp/base64](https://github.com/aklomp/base64), commit
+`5d5074cb856b9a53fe64f04ddf47812a85f4fb5a` (BSD-2-Clause), unchanged except
+for `lib/config.h`, which its Makefile generates: it enables the codecs C
+builds. Its Makefile compiles each x86 codec with that codec's `-m` flag; the
+`lib/arena/vendor/base64_*.c` wrappers do the same with a clang `target`
+attribute, since `c.coda` has one set of flags per package.
 Vendoring keeps the package's declarative C build self-contained.

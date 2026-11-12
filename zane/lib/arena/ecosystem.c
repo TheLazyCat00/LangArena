@@ -1,4 +1,5 @@
 #include "binding.h"
+#include "vendor/base64/include/libbase64.h"
 #include "vendor/yyjson.h"
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
@@ -21,78 +22,24 @@ static zane_bytes copy(const char *s, size_t n) {
     memcpy(p, s, n);
   return (zane_bytes){p, n};
 }
+/* Base64 through aklomp/base64, the library LangArena's C entry links, with
+   the codec it picks for the processor at run time (vendor/base64). */
 zane_bytes arena_base64_encode(zane_bytes input) {
-  static const char table[] =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   size_t n = (input.size + 2) / 3 * 4;
   uint8_t *p = zane_bytes_alloc(n);
-  const uint8_t *s = input.data;
-  for (size_t i = 0, j = 0; i < input.size; i += 3) {
-    uint32_t v = (uint32_t)s[i] << 16;
-    if (i + 1 < input.size)
-      v |= (uint32_t)s[i + 1] << 8;
-    if (i + 2 < input.size)
-      v |= s[i + 2];
-    p[j++] = table[(v >> 18) & 63];
-    p[j++] = table[(v >> 12) & 63];
-    p[j++] = i + 1 < input.size ? table[(v >> 6) & 63] : '=';
-    p[j++] = i + 2 < input.size ? table[v & 63] : '=';
-  }
-  return (zane_bytes){p, n};
-}
-static int decode(uint8_t c) {
-  if (c >= 'A' && c <= 'Z')
-    return c - 'A';
-  if (c >= 'a' && c <= 'z')
-    return c - 'a' + 26;
-  if (c >= '0' && c <= '9')
-    return c - '0' + 52;
-  if (c == '+')
-    return 62;
-  if (c == '/')
-    return 63;
-  return -1;
+  size_t written = 0;
+  base64_encode((const char *)input.data, input.size, (char *)p, &written, 0);
+  return (zane_bytes){p, written};
 }
 zane_bytes arena_base64_decode(zane_bytes input) {
-  if (input.size % 4)
-    die("invalid base64 length");
   if (!input.size)
     return copy("", 0);
-  const uint8_t *s = input.data;
-  size_t padding = 0;
-  if (s[input.size - 1] == '=') padding++;
-  if (s[input.size - 2] == '=') padding++;
-  for (size_t index = 0; index < input.size; index++) {
-    if (s[index] == '=') {
-      if (index < input.size - padding || index % 4 < 2)
-        die("invalid base64 padding");
-    } else if (index >= input.size - padding || decode(s[index]) < 0) {
-      die("invalid base64 byte");
-    }
-  }
-  size_t n = input.size / 4 * 3;
-  if (s[input.size - 1] == '=')
-    n--;
-  if (s[input.size - 2] == '=')
-    n--;
-  uint8_t *p = zane_bytes_alloc(n);
-  size_t j = 0;
-  for (size_t i = 0; i < input.size; i += 4) {
-    uint32_t v = 0;
-    for (int k = 0; k < 4; k++) {
-      int d = s[i + k] == '=' ? 0 : decode(s[i + k]);
-      if (d < 0)
-        die("invalid base64 byte");
-      v = (v << 6) | (unsigned)d;
-    }
-    if (j < n)
-      p[j++] = (uint8_t)(v >> 16);
-    if (j < n)
-      p[j++] = (uint8_t)(v >> 8);
-    if (j < n)
-      p[j++] = (uint8_t)v;
-  }
-  return (zane_bytes){p, n};
+  uint8_t *p = zane_bytes_alloc(input.size / 4 * 3 + 3);
+  size_t written = 0;
+  if (base64_decode((const char *)input.data, input.size, (char *)p, &written,
+                    0) != 1)
+    die("invalid base64");
+  return (zane_bytes){p, written};
 }
 struct arena_json {
   yyjson_mut_doc *mutable;

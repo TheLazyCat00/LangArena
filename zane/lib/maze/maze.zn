@@ -4,23 +4,23 @@ import math$;
 import arena$;
 // A cell's kind is 0..4 and its neighbors are cell indices (at most w*h), so
 // both are stored at 32 bits. An interior cell has 4 neighbors, a border cell
-// none; they sit in four slots per cell in State.neighbors, next to each
-// other as in C's inline neighbors[4], not in a list of the cell's own.
+// none; they sit in the cell itself, as in C's neighbors[4].
 type Cell = struct {
   kind I32;
   degree I32;
+  neighbors Array<I32, 4>;
 }
 
 Cell(kind I32) => init {
   kind;
   degree=I32(0);
+  neighbors=Array([I32(0), I32(0), I32(0), I32(0)]);
 }
 
 type State = #struct {
   w Int;
   h Int;
   cells List<Cell>;
-  neighbors List<I32>;
   rng Rng;
   result Int;
   path List<I32>;
@@ -31,7 +31,6 @@ State(cfg Config, name String) => init {
   w=cfg:integer(name, "w");
   h=cfg:integer(name, "h");
   cells=List(Cell);
-  neighbors=List(I32);
   rng=Rng();
   result=Int(0);
   path=List(I32);
@@ -42,7 +41,7 @@ Int start(this State) => this.w+2;
 Int finish(this State) => (this.h-1)*this.w-1;
 Bool walkable(kind I32) => kind==1 or kind==2 or kind==3;
 Int degree(this State, index Int) => Int(this.cells[index].degree);
-Int neighbor(this State, index Int, i Int) => Int(this.neighbors[(index-1)*4+i]);
+Int neighbor(this State, index Int, i Int) => Int(this.cells[index].neighbors[i]);
 Int adjacentOpen(this State, index Int) {
   count Int=Int(0);
   i Int=Int(1);
@@ -117,7 +116,6 @@ Unit prepare(this State) mut {
   i!to(this.w*this.h) {
     this.cells!push(Cell(I32(0)));
   }
-  this.neighbors=filled(this.w*this.h*4, I32(0));
   this.cells[this:start()].kind=I32(2);
   this.cells[this:finish()].kind=I32(3);
   y Int=Int(0);
@@ -126,19 +124,18 @@ Unit prepare(this State) mut {
     x!to(this.w-1) {
       index Int=y*this.w+x+1;
       interior Bool=if(x>0 and y>0 and x<this.w-1 and y<this.h-1) {
-        base Int=(index-1)*4;
         this.cells[index].degree=I32(4);
-        this.neighbors[base+1]=I32.wrap(index-this.w);
-        this.neighbors[base+2]=I32.wrap(index+this.w);
-        this.neighbors[base+3]=I32.wrap(index+1);
-        this.neighbors[base+4]=I32.wrap(index-1);
+        this.cells[index].neighbors[Int(1)]=I32.wrap(index-this.w);
+        this.cells[index].neighbors[Int(2)]=I32.wrap(index+this.w);
+        this.cells[index].neighbors[Int(3)]=I32.wrap(index+1);
+        this.cells[index].neighbors[Int(4)]=I32.wrap(index-1);
         j Int=Int(1);
         j!to(Int(4)) {
           a Int=this.rng!next(Int(4))+1;
           b Int=this.rng!next(Int(4))+1;
-          old I32=this.neighbors[base+a];
-          this.neighbors[base+a]=this.neighbors[base+b];
-          this.neighbors[base+b]=old;
+          old I32=this.cells[index].neighbors[a];
+          this.cells[index].neighbors[a]=this.cells[index].neighbors[b];
+          this.cells[index].neighbors[b]=old;
         }
       }
       interior:else() {

@@ -1,7 +1,8 @@
 package arena;
 import core$;
-// Vertices and priorities are bounded by the graph size, so entries are
-// stored at 32 bits.
+// A vertex is a graph or maze index, and a priority is a path cost plus a
+// distance estimate, both well below 2^31 for any workload that fits in
+// memory, so entries are stored at 32 bits.
 type Entry = struct {
   vertex I32;
   priority I32;

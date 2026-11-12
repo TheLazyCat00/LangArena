@@ -137,3 +137,24 @@ Unit put(this StringMap, key String, value Int) mut {
   }
   return Unit();
 }
+
+// Adds amount to key's value, inserting key with value amount when it is
+// absent, and returns the new value: one probe where has, get and put
+// would take three.
+Int add(this StringMap, key String, amount Int) mut {
+  index Int=this:slot(key);
+  if(index==0) {
+    return Int(0);
+  }
+  entry Int=this.slots[index];
+  if(entry==0) {
+    this.keys!push(key);
+    this.values!push(amount);
+    this.entries=this.entries+1;
+    this.slots[index]=this.entries;
+    return amount;
+  }
+  value Int=this.values[entry]+amount;
+  this.values[entry]=value;
+  return value;
+}

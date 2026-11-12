@@ -38,7 +38,6 @@ Unit prepare(this State) mut {
 
 Unit step(this State, iteration Int) mut {
   frequencies StringMap=StringMap(this.n*2+16);
-  order List<String> = List(String);
   start Int=Int(1);
   i Int=Int(1);
   i!to(length(this.text)+1) {
@@ -47,26 +46,26 @@ Unit step(this State, iteration Int) mut {
       separator=byte(this.text, i)==32;
     }
     if(separator) {
-      word String=slice(this.text, start, i-start);
-      if(~frequencies:has(word)) {
-        order!push(word);
-      }
-      value Int=frequencies:get(word)+1;
-      frequencies!put(word, value);
+      frequencies!add(slice(this.text, start, i-start), Int(1));
       start=i+1;
     }
   }
+  // Keys are in insertion order, the order C's uthash iterates in.
   highest Int=Int(0);
-  best String=String("");
+  best Int=Int(0);
   j Int=Int(1);
-  j!to(order:size()) {
-    value Int=frequencies:get(order[j]);
+  j!to(frequencies.entries) {
+    value Int=frequencies.values[j];
     if(value>highest) {
       highest=value;
-      best=order[j];
+      best=j;
     }
   }
-  this.result=u32(this.result+highest+hash(best)+frequencies.entries);
+  bestHash Int=hash(String(""));
+  if(best>0) {
+    bestHash=hash(frequencies.keys[best]);
+  }
+  this.result=u32(this.result+highest+bestHash+frequencies.entries);
   return Unit();
 }
 

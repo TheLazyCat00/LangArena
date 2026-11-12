@@ -7,16 +7,11 @@ on:
       - '.github/workflows/zane.yml'
       - 'test.js'
       - 'run.js'
-  push:
-    branches: [implement-zane-suite]
-    paths:
-      - 'zane/**'
-      - '.github/workflows/zane.yml'
-      - 'test.js'
-      - 'run.js'
+  workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   validate:
@@ -42,5 +37,30 @@ jobs:
         run: python3 tests/runner.py
       - name: Check codec round trips
         run: zane test
+      - name: Preserve optimized executables
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: zane-linux
+          path: zane/out/host/
+          retention-days: 7
+
+  production:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Restore optimized executables
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: zane-linux
+          path: zane/out/host/
       - name: Check full-size workloads in isolated processes
-        run: python3 tests/production.py
+        working-directory: zane
+        run: |
+          chmod +x out/host/zane
+          python3 tests/production.py --shard ${{ matrix.shard }} --shards 5

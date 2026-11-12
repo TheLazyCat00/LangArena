@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Check every full run.js workload separately with bounded resources."""
+import argparse
 import json
 from pathlib import Path
 import resource
@@ -14,7 +15,14 @@ def limits():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 def main():
-    rows = json.loads((ROOT.parent / 'run.js').read_text())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--shard', type=int, default=0)
+    parser.add_argument('--shards', type=int, default=1)
+    args = parser.parse_args()
+    if args.shards < 1 or not 0 <= args.shard < args.shards:
+        parser.error('shard must be within the positive shard count')
+    all_rows = json.loads((ROOT.parent / 'run.js').read_text())
+    rows = [row for index, row in enumerate(all_rows) if index % args.shards == args.shard]
     failures = []
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / 'config.json'

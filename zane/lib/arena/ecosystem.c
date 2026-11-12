@@ -1,6 +1,7 @@
 #include "binding.h"
 #include "vendor/yyjson.h"
-#include <regex.h>
+#define PCRE2_CODE_UNIT_WIDTH 8
+#include <pcre2.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -237,40 +238,46 @@ double arena_csv_get(const arena_csv *csv, int64_t row, int64_t column) {
     die("CSV index out of bounds");
   return csv->values[(row - 1) * 3 + column];
 }
+// PCRE2 with its JIT, as the C implementation uses. Byte mode, not UTF:
+// the patterns are ASCII, and in UTF mode every pcre2_match call would
+// re-validate the whole subject, making a count of n matches quadratic.
 struct arena_regex {
-  regex_t compiled;
+  pcre2_code *code;
+  pcre2_match_data *match;
 };
 arena_regex *arena_regex_new(const char *pattern, bool insensitive) {
   arena_regex *r = alloc(sizeof(*r));
-  if (regcomp(&r->compiled, pattern,
-              REG_EXTENDED | (insensitive ? REG_ICASE : 0)))
-    die("invalid regex");
+  int error;
+  PCRE2_SIZE offset;
+  r->code = pcre2_compile((PCRE2_SPTR)pattern, PCRE2_ZERO_TERMINATED,
+                          insensitive ? PCRE2_CASELESS : 0,
+                          &error, &offset, NULL);
+  if (!r->code) die("invalid regex");
+  pcre2_jit_compile(r->code, PCRE2_JIT_COMPLETE);
+  r->match = pcre2_match_data_create_from_pattern(r->code, NULL);
+  if (!r->match) die("out of memory");
   return r;
 }
 void arena_regex_free(arena_regex *r) {
-  regfree(&r->compiled);
+  pcre2_match_data_free(r->match);
+  pcre2_code_free(r->code);
   free(r);
 }
 
-// REG_STARTEND avoids rescanning the remaining input for a NUL on every match.
+typedef struct { size_t rm_so, rm_eo; } arena_span;
 static bool next_match(const arena_regex *regex, const char *text, size_t length,
-                       size_t offset, regmatch_t *match) {
-#ifdef REG_STARTEND
-  match->rm_so = (regoff_t)offset;
-  match->rm_eo = (regoff_t)length;
-  return regexec(&regex->compiled, text, 1, match, REG_STARTEND | (offset ? REG_NOTBOL : 0)) == 0;
-#else
-  (void)length;
-  if (regexec(&regex->compiled, text + offset, 1, match, offset ? REG_NOTBOL : 0)) return false;
-  match->rm_so += (regoff_t)offset;
-  match->rm_eo += (regoff_t)offset;
+                       size_t offset, arena_span *match) {
+  if (pcre2_match(regex->code, (PCRE2_SPTR)text, length, offset, 0, regex->match, NULL) < 0)
+    return false;
+  PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(regex->match);
+  match->rm_so = ovector[0];
+  match->rm_eo = ovector[1];
   return true;
-#endif
 }
 int64_t arena_regex_count(const arena_regex *regex, const char *text) {
   size_t length = strlen(text), offset = 0;
   int64_t count = 0;
-  regmatch_t match;
+  arena_span match;
   while (offset < length && next_match(regex, text, length, offset, &match)) {
     count++;
     offset = (size_t)match.rm_eo > offset ? (size_t)match.rm_eo : offset + 1;
@@ -283,7 +290,7 @@ arena_matches *arena_regex_matches(const arena_regex *regex, const char *text) {
   arena_matches *result = calloc(1, sizeof(*result));
   if (!result) die("out of memory");
   size_t length = strlen(text), offset = 0, capacity = 0;
-  regmatch_t match;
+  arena_span match;
   while (offset < length && next_match(regex, text, length, offset, &match)) {
     if (result->count == capacity) {
       capacity = capacity ? capacity * 2 : 16;

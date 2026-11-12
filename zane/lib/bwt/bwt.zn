@@ -13,103 +13,30 @@ Encoded(data String, original Int) => init {
   original;
 }
 
-// Suffix positions and ranks are at most the input length, so both lists
-// hold 32-bit values; the doubling offset stays an Int.
-type Suffixes = #struct {
-  indices List<I32>;
-  rank List<I32>;
-  offset Int;
-}
+// Suffix positions and ranks are at most the input length, so the suffix
+// array and rank lists hold 32-bit values.
 
-Suffixes(indices List<I32>, rank List<I32>, offset Int) => init {
-  indices;
-  rank;
-  offset;
-}
-
-Int compare(this Suffixes, a Int, b Int) {
-  if(this.rank[a]<this.rank[b]) {
-    return ~Int(1);
+// Stable counting sort of the suffix array by keys[suffix], each key in 0..n-1.
+List<I32> byKey(order List<I32>, keys List<I32>, n Int) {
+  count List<Int> = filled(n+1, Int(0));
+  i Int=Int(1);
+  i!to(n) {
+    key Int=Int(keys[Int(order[i])])+1;
+    count[key]=count[key]+1;
   }
-  if(this.rank[a]>this.rank[b]) {
-    return Int(1);
+  j Int=Int(2);
+  j!to(n+1) {
+    count[j]=count[j]+count[j-1];
   }
-  n Int=this.rank:size();
-  left I32=this.rank[rem(a-1+this.offset, n)+1];
-  right I32=this.rank[rem(b-1+this.offset, n)+1];
-  if(left<right) {
-    return ~Int(1);
-  }
-  if(left>right) {
-    return Int(1);
-  }
-  return Int(0);
-}
-
-Int up(this Suffixes, index Int, pivot Int, high Int) {
-  i Int=index;
+  out List<I32> = filled(n, I32(0));
   k Int=Int(1);
-  k!to(high-index+1) {
-    if(this:compare(Int(this.indices[i]), pivot)>=0) {
-      return i;
-    }
-    i=i+1;
+  k!to(n) {
+    suffix I32=order[n+1-k];
+    key Int=Int(keys[Int(suffix)])+1;
+    out[count[key]]=suffix;
+    count[key]=count[key]-1;
   }
-  return i;
-}
-
-Int down(this Suffixes, index Int, pivot Int, low Int) {
-  i Int=index;
-  k Int=Int(1);
-  k!to(index-low+1) {
-    if(this:compare(Int(this.indices[i]), pivot)<=0) {
-      return i;
-    }
-    i=i-1;
-  }
-  return i;
-}
-
-type Partition = struct {
-  left Int;
-  right Int;
-}
-
-Partition(left Int, right Int) => init {
-  left;
-  right;
-}
-
-Partition partition(this Suffixes, low Int, high Int) mut {
-  pivot Int=Int(this.indices[(low+high)/2]);
-  i Int=low;
-  j Int=high;
-  k Int=Int(1);
-  k!to(high-low+1) {
-    if(i>j) {
-      return Partition(i, j);
-    }
-    i=this:up(i, pivot, high);
-    j=this:down(j, pivot, low);
-    if(i<=j) {
-      v I32=this.indices[i];
-      this.indices[i]=this.indices[j];
-      this.indices[j]=v;
-      i=i+1;
-      j=j-1;
-    }
-  }
-  return Partition(i, j);
-}
-
-Unit sort(this Suffixes, low Int, high Int) mut {
-  if(low>=high) {
-    return Unit();
-  }
-  p Partition=this!partition(low, high);
-  this!sort(low, p.right);
-  this!sort(p.left, high);
-  return Unit();
+  return out;
 }
 
 Encoded encode(input String) {
@@ -148,31 +75,37 @@ Encoded encode(input String) {
     }
     ranks[index]=current;
   }
-  suffixes Suffixes=Suffixes(indices, ranks, Int(1));
+  // Prefix doubling with two counting-sort passes per round, as C does.
+  offset Int=Int(1);
   round Int=Int(1);
   round!to(Int(63)) {
-    if(suffixes.offset<n) {
-      suffixes!sort(Int(1), n);
+    if(offset<n) {
+      second List<I32> = filled(n, I32(0));
+      s Int=Int(1);
+      s!to(n) {
+        second[s]=ranks[rem(s-1+offset, n)+1];
+      }
+      indices=byKey(byKey(indices, second, n), ranks, n);
       nextRanks List<I32> = filled(n, I32(0));
       q Int=Int(2);
       q!to(n) {
-        prior Int=Int(suffixes.indices[q-1]);
-        index Int=Int(suffixes.indices[q]);
+        prior Int=Int(indices[q-1]);
+        index Int=Int(indices[q]);
         delta I32=I32(0);
-        if(suffixes:compare(prior, index)~=0) {
+        if(ranks[prior]~=ranks[index] or second[prior]~=second[index]) {
           delta=I32(1);
         }
         nextRanks[index]=nextRanks[prior]+delta;
       }
-      suffixes.rank=nextRanks;
-      suffixes.offset=suffixes.offset*2;
+      ranks=nextRanks;
+      offset=offset*2;
     }
   }
   out Buffer=buffer(Int(0), Int(0));
   original Int=Int(1);
   q Int=Int(1);
   q!to(n) {
-    suffix Int=Int(suffixes.indices[q]);
+    suffix Int=Int(indices[q]);
     first Bool=if(suffix==1) {
       out!push(byte(inputBytes, n));
       original=q;

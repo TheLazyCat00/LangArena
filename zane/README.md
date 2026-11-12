@@ -43,7 +43,8 @@ runtime pool before measurement.
 ## C boundary and layouts
 
 C supplies APIs missing from core v0.10: JSON through yyjson, CSV parsing,
-Base64, POSIX regular expressions, mutable byte storage, string byte access,
+Base64, regular expressions through PCRE2 with its JIT (the system
+`libpcre2-8`, which C also links), mutable byte storage, string byte access,
 decimal formatting, file input, timing, and `qsort` for `Sort::Self`.
 Foreign data handles own their allocations. Only the root's foreign `Host`
 capability reads files, observes clocks, prints, or exits; computation

@@ -1,4 +1,5 @@
 c [
  setting value target
  source vendor/yyjson.c *
+ system pcre2-8 *
 ]

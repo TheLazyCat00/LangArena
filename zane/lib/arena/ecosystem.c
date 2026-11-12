@@ -240,22 +240,60 @@ void arena_regex_free(arena_regex *r) {
   regfree(&r->compiled);
   free(r);
 }
-int64_t arena_regex_count(const arena_regex *r, const char *text) {
+
+// REG_STARTEND avoids rescanning the remaining input for a NUL on every match.
+static bool next_match(const arena_regex *regex, const char *text, size_t length,
+                       size_t offset, regmatch_t *match) {
+#ifdef REG_STARTEND
+  match->rm_so = (regoff_t)offset;
+  match->rm_eo = (regoff_t)length;
+  return regexec(&regex->compiled, text, 1, match, REG_STARTEND) == 0;
+#else
+  (void)length;
+  if (regexec(&regex->compiled, text + offset, 1, match, 0)) return false;
+  match->rm_so += (regoff_t)offset;
+  match->rm_eo += (regoff_t)offset;
+  return true;
+#endif
+}
+int64_t arena_regex_count(const arena_regex *regex, const char *text) {
+  size_t length = strlen(text), offset = 0;
   int64_t count = 0;
-  regmatch_t m;
-  while (*text && regexec(&r->compiled, text, 1, &m, 0) == 0) {
+  regmatch_t match;
+  while (offset < length && next_match(regex, text, length, offset, &match)) {
     count++;
-    text += m.rm_eo ? m.rm_eo : 1;
+    offset = (size_t)match.rm_eo > offset ? (size_t)match.rm_eo : offset + 1;
   }
   return count;
 }
-int64_t arena_regex_find(const arena_regex *r, const char *text, int64_t offset,
-                         bool end) {
-  size_t n = strlen(text);
-  if (offset < 1 || (uint64_t)(offset - 1) > n)
-    return 0;
-  regmatch_t m;
-  if (regexec(&r->compiled, text + offset - 1, 1, &m, 0))
-    return 0;
-  return offset + (end ? m.rm_eo : m.rm_so);
+typedef struct { int64_t start, end; } arena_range;
+struct arena_matches { arena_range *ranges; size_t count; };
+arena_matches *arena_regex_matches(const arena_regex *regex, const char *text) {
+  arena_matches *result = calloc(1, sizeof(*result));
+  if (!result) die("out of memory");
+  size_t length = strlen(text), offset = 0, capacity = 0;
+  regmatch_t match;
+  while (offset < length && next_match(regex, text, length, offset, &match)) {
+    if (result->count == capacity) {
+      capacity = capacity ? capacity * 2 : 16;
+      arena_range *ranges = realloc(result->ranges, capacity * sizeof(*ranges));
+      if (!ranges) die("out of memory");
+      result->ranges = ranges;
+    }
+    result->ranges[result->count++] = (arena_range){match.rm_so + 1, match.rm_eo + 1};
+    offset = (size_t)match.rm_eo > offset ? (size_t)match.rm_eo : offset + 1;
+  }
+  return result;
+}
+void arena_matches_free(arena_matches *matches) {
+  free(matches->ranges);
+  free(matches);
+}
+int64_t arena_matches_count(const arena_matches *matches) {
+  return (int64_t)matches->count;
+}
+int64_t arena_matches_get(const arena_matches *matches, int64_t index, bool end) {
+  if (index < 1 || (uint64_t)index > matches->count) die("regex match index out of bounds");
+  arena_range range = matches->ranges[index - 1];
+  return end ? range.end : range.start;
 }

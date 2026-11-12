@@ -42,5 +42,15 @@ type Regex = #handle {
 ^Regex regex(pattern String, insensitive Bool) => _regex(pattern, insensitive);
 @primitives$I64 _count(this Regex, text @primitives$String) foreign "arena_regex_count";
 Int count(this Regex, text String) => Int(this:_count(text));
-@primitives$I64 _find(this Regex, text @primitives$String, offset @primitives$I64, end @primitives$Bool) foreign "arena_regex_find";
-Int find(this Regex, text String, offset Int, end Bool) => Int(this:_find(text, offset, end));
+
+type Matches = #handle {
+  cType="arena_matches";
+  free="arena_matches_free";
+}
+
+^Matches _matches(regex Regex, text @primitives$String) foreign "arena_regex_matches";
+@primitives$I64 _count(this Matches) foreign "arena_matches_count";
+@primitives$I64 _get(this Matches, index @primitives$I64, end @primitives$Bool) foreign "arena_matches_get";
+^Matches regexMatches(regex Regex, text String) => _matches(regex, text);
+Int count(this Matches) => Int(this:_count());
+Int get(this Matches, index Int, end Bool) => Int(this:_get(index, end));

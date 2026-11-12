@@ -67,7 +67,11 @@ typedef struct arena_regex arena_regex;
 arena_regex *arena_regex_new(const char *pattern, bool insensitive);
 void arena_regex_free(arena_regex *regex);
 int64_t arena_regex_count(const arena_regex *regex, const char *text);
-int64_t arena_regex_find(const arena_regex *regex, const char *text,
-                         int64_t offset, bool end);
 
 int64_t arena_stop(arena_host *host, int64_t started);
+
+typedef struct arena_matches arena_matches;
+arena_matches *arena_regex_matches(const arena_regex *regex, const char *text);
+void arena_matches_free(arena_matches *matches);
+int64_t arena_matches_count(const arena_matches *matches);
+int64_t arena_matches_get(const arena_matches *matches, int64_t index, bool end);

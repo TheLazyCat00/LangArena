@@ -1,0 +1,46 @@
+name: Zane
+
+on:
+  pull_request:
+    paths:
+      - 'zane/**'
+      - '.github/workflows/zane.yml'
+      - 'test.js'
+      - 'run.js'
+  push:
+    branches: [implement-zane-suite]
+    paths:
+      - 'zane/**'
+      - '.github/workflows/zane.yml'
+      - 'test.js'
+      - 'run.js'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: zane
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install pinned Zane tools
+        run: |
+          curl -fLsS https://github.com/zane-lang/zane/releases/download/v0.15/zane-linux-x86_64 -o "$RUNNER_TEMP/zane"
+          echo "d5f89774a8694c9cabe5a0782d46cc1e2f1a9e5f03c790a4b8480b66f8346232  $RUNNER_TEMP/zane" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/zane"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/zane" toolchain install v0.31
+      - name: Fetch and build
+        run: |
+          zane fetch
+          zane build
+      - name: Check reference fixtures and runner protocol
+        run: python3 tests/runner.py
+      - name: Check codec round trips
+        run: zane test
+      - name: Check full-size workloads in isolated processes
+        run: python3 tests/production.py

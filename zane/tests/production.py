@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""Check every full run.js workload separately with bounded resources."""
+import json
+from pathlib import Path
+import resource
+import subprocess
+import tempfile
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+
+def limits():
+    resource.setrlimit(resource.RLIMIT_AS, (3 * 1024 ** 3, 3 * 1024 ** 3))
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+def main():
+    rows = json.loads((ROOT.parent / 'run.js').read_text())
+    failures = []
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / 'config.json'
+        for row in rows:
+            path.write_text(json.dumps([row]))
+            started = time.monotonic()
+            try:
+                result = subprocess.run(
+                    [str(ROOT / 'out/host/zane'), str(path)],
+                    text=True, capture_output=True, timeout=120, preexec_fn=limits,
+                )
+                print(result.stdout, end='', flush=True)
+                if result.stderr:
+                    print(result.stderr, end='', flush=True)
+                if result.returncode:
+                    failures.append(row['name'])
+            except subprocess.TimeoutExpired:
+                failures.append(row['name'])
+                print(f"{row['name']}: exceeded 120 seconds", flush=True)
+            print(f"Process wall time: {time.monotonic() - started:.2f}s", flush=True)
+    if failures:
+        raise SystemExit("Failed workloads: " + ", ".join(failures))
+    print(f"All {len(rows)} production checksums passed.", flush=True)
+
+if __name__ == '__main__':
+    main()

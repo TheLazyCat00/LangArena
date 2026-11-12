@@ -168,21 +168,28 @@ String decode(encoded Encoded) {
   tree Tree=Tree();
   tree!build(encoded.frequencies);
   current Int=tree.root;
-  reader BitReader=BitReader(encoded.data);
+  data Buffer=bytes(encoded.data);
   out Buffer=buffer(Int(0), Int(0));
+  // As in C, each byte is read once and its bits taken from the top.
+  remaining Int=encoded.bits;
   i Int=Int(1);
-  i!to(encoded.bits) {
-    bit Int=reader!bit();
-    branch Bool=if(bit==0) {
-      current=tree.nodes[current].left;
+  i!to(length(data)) {
+    value Int=byte(data, i);
+    b Int=Int(1);
+    b!to(min(Int(8), remaining)) {
+      bit Int=bitAnd(shiftRightLogical(value, Int(8)-b), Int(1));
+      branch Bool=if(bit==0) {
+        current=tree.nodes[current].left;
+      }
+      branch:else() {
+        current=tree.nodes[current].right;
+      }
+      if(tree.nodes[current].left==0 and tree.nodes[current].right==0) {
+        out!push(tree.nodes[current].value);
+        current=tree.root;
+      }
     }
-    branch:else() {
-      current=tree.nodes[current].right;
-    }
-    if(tree.nodes[current].left==0 and tree.nodes[current].right==0) {
-      out!push(tree.nodes[current].value);
-      current=tree.root;
-    }
+    remaining=remaining-8;
   }
   return out:string();
 }

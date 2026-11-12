@@ -146,19 +146,32 @@ Encoded encode(input String) {
   tree!build(freq);
   root Int=tree.root;
   tree!codes(root, Int(0), Int(0));
-  out BitWriter=BitWriter();
+  // The pending byte and its bit count stay in locals, as in C's encoder.
+  out Buffer=buffer(Int(0), Int(0));
+  pending Int=Int(0);
+  position Int=Int(0);
+  written Int=Int(0);
   i Int=Int(1);
   i!to(length(input)) {
     value Int=byte(inputBytes, i)+1;
+    code Int=tree.codes[value];
     codeLength Int=tree.lengths[value];
     j Int=Int(1);
     j!to(codeLength) {
-      bit Int=bitAnd(shiftRightLogical(tree.codes[value], codeLength-j), Int(1));
-      out!bit(bit);
+      pending=pending*2+bitAnd(shiftRightLogical(code, codeLength-j), Int(1));
+      position=position+1;
+      if(position==8) {
+        out!push(pending);
+        pending=Int(0);
+        position=Int(0);
+      }
     }
+    written=written+codeLength;
   }
-  text String=out!flush();
-  return Encoded(text, out.written, freq);
+  if(position>0) {
+    out!push(shiftLeft(pending, Int(8)-position));
+  }
+  return Encoded(out:string(), written, freq);
 }
 
 String decode(encoded Encoded) {

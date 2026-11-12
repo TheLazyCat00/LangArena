@@ -112,14 +112,11 @@ Int get(this Sorted, index Int) => Int(this:_ffiSortedGet(index));
 ^Sorted standardSort(input @primitives$List<@primitives$I32>) foreign "arena_sort";
 Int u32(value Int) => bitAnd(value, Int(4294967295));
 Int rem(value Int, divisor Int) => value-value/divisor*divisor;
-@primitives$String primitive(raw @primitives$String) => raw;
 Int hash(text String) {
-  // Convert once: each String to @primitives$String conversion copies the text.
-  raw @primitives$String=primitive(text);
   value Int=Int(5381);
   i Int=Int(1);
-  i!to(Int(_ffiLength(raw))) {
-    value=u32(value*33+Int(_ffiByte(raw, i)));
+  i!to(length(text)) {
+    value=u32(value*33+byte(text, i));
   }
   return value;
 }

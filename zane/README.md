@@ -1,7 +1,7 @@
 # Zane
 
 All 50 LangArena workloads, ported from the Crystal reference. The manifest
-pins compiler **v0.31** and core **v0.10**.
+pins compiler **v0.32** and core **v0.10**.
 
 ## Run
 
@@ -9,7 +9,7 @@ Install the [Zane CLI](https://github.com/zane-lang/zane), then:
 
 ```sh
 cd zane
-zane toolchain install v0.31
+zane toolchain install v0.32
 zane fetch
 ./test.sh                    # all test.js checksums
 ./run                     # full run.js workloads
@@ -73,7 +73,7 @@ TEST=1 ruby benchmarks.rb Zane
 PROD=1 ruby benchmarks.rb Zane
 ```
 
-The image pins CLI v0.15 with its SHA-256 and installs compiler v0.31.
+The image pins CLI v0.15 with its SHA-256 and installs compiler v0.32.
 The suite records both versions. Source-size measurements include bindings
 and exclude vendored yyjson.
 

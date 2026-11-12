@@ -1,0 +1,31 @@
+package repro;
+import core$;
+// A list of n I32 made by one function and returned to its caller, as
+// LangArena's arena$filled does. Returning it should hand the list over;
+// each call instead copies all n elements into a block of the caller's,
+// in a mapping of its own once the list is past a chunk, and the callee's
+// block is unmapped when its scope drains, so every call faults its pages
+// in again.
+List<I32> filled(n Int, value I32) {
+  out List<I32> = List(I32);
+  i Int=Int(1);
+  i!to(n) {
+    copy I32=value;
+    out!push(copy);
+  }
+  return out;
+}
+Unit main() {
+  console Console(@program$console);
+  runtime Runtime(@program$runtime);
+  n Int=runtime:arguments()[Int(1)]:parseInt() ? e { return Unit(); }
+  rounds Int=runtime:arguments()[Int(2)]:parseInt() ? e { return Unit(); }
+  total Int=Int(0);
+  r Int=Int(1);
+  r!to(rounds) {
+    next List<I32> = filled(n, I32.wrap(r));
+    total=total+Int(next[n]);
+  }
+  console!print(String(total));
+  return Unit();
+}

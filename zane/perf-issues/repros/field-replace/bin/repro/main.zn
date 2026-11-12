@@ -1,0 +1,37 @@
+package repro;
+import core$;
+// A state whose list field is replaced by a fresh list each round, as
+// LangArena's Binarytrees::Arena did. Each round's list grows to n Ints
+// (8n bytes) and the previous one is unreachable once replaced, so the
+// program should need about one list's memory. Peak RSS grows with the
+// number of rounds instead.
+type State = #struct {
+  items List<Int>;
+  total Int;
+}
+State() => init {
+  items=List(Int);
+  total=Int(0);
+}
+Unit round(this State, n Int, r Int) mut {
+  this.items=List(Int);
+  i Int=Int(1);
+  i!to(n) {
+    this.items!push(i+r);
+  }
+  this.total=this.total+this.items[n];
+  return Unit();
+}
+Unit main() {
+  console Console(@program$console);
+  runtime Runtime(@program$runtime);
+  n Int=runtime:arguments()[Int(1)]:parseInt() ? e { return Unit(); }
+  rounds Int=runtime:arguments()[Int(2)]:parseInt() ? e { return Unit(); }
+  state State=State();
+  r Int=Int(1);
+  r!to(rounds) {
+    state!round(n, r);
+  }
+  console!print(String(state.total));
+  return Unit();
+}

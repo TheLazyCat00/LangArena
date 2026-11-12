@@ -1,0 +1,36 @@
+package repro;
+import core$;
+import big$;
+type State = #struct {
+  total Int;
+}
+State() => init {
+  total=Int(0);
+}
+// One round: a fresh foreign string of `size` bytes, of which only the
+// length is kept. It should cost one allocation and C's memset. It also
+// costs a zane_copy of all its bytes (core's String(@primitives$String)
+// constructor copying the fresh string) and a zane_promote of all its
+// bytes (make() returning the String). Replace the first line with
+//   this.total=this.total+Int(rawLength(rawMake(size+round)));
+// and both copies go away; with
+//   s String=String(rawMake(size+round));
+// only the copy remains.
+Unit step(this State, size Int, round Int) mut {
+  s String=make(size+round);
+  this.total=this.total+length(s);
+  return Unit();
+}
+Unit main() {
+  console Console(@program$console);
+  runtime Runtime(@program$runtime);
+  size Int=runtime:arguments()[Int(1)]:parseInt() ? e { return Unit(); }
+  rounds Int=runtime:arguments()[Int(2)]:parseInt() ? e { return Unit(); }
+  state State=State();
+  i Int=Int(1);
+  i!to(rounds) {
+    state!step(size, i);
+  }
+  console!print(String(state.total));
+  return Unit();
+}

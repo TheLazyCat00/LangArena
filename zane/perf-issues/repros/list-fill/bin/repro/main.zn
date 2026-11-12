@@ -1,0 +1,41 @@
+package repro;
+import core$;
+// filled(n, value) as LangArena's arena package writes it: n pushes of a copy.
+List<I32> filledCopy(n Int, value I32) {
+  out List<I32> = List(I32);
+  i Int=Int(1);
+  i!to(n) {
+    copy I32=value;
+    out!push(copy);
+  }
+  return out;
+}
+// The same loop written as the repeat core's `to` lowers to, without
+// `to`'s branch around the body.
+List<I32> filledDirect(n Int, value I32) {
+  out List<I32> = List(I32);
+  @controlflow$repeat(n, {
+    out!push(I32(7));
+  });
+  return out;
+}
+Unit main() {
+  console Console(@program$console);
+  runtime Runtime(@program$runtime);
+  n Int=runtime:arguments()[Int(1)]:parseInt() ? e { return Unit(); }
+  which Int=runtime:arguments()[Int(2)]:parseInt() ? e { return Unit(); }
+  total Int=Int(0);
+  r Int=Int(1);
+  r!to(Int(10)) {
+    a Bool=if(which==1) {
+      l List<I32> = filledCopy(n, I32.wrap(r));
+      total=total+Int(l[n]);
+    }
+    a:else() {
+      l List<I32> = filledDirect(n, I32.wrap(r));
+      total=total+Int(l[n]);
+    }
+  }
+  console!print(String(total));
+  return Unit();
+}

@@ -1,0 +1,6 @@
+package big;
+import core$;
+@primitives$String rawMake(n @primitives$I64) foreign "big_make";
+@primitives$I64 rawLength(text @primitives$String) foreign "big_length";
+String make(n Int) => String(rawMake(n));
+Int length(text String) => Int(rawLength(text));

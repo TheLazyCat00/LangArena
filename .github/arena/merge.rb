@@ -21,6 +21,27 @@ jobs = Dir.glob(File.join(parts, "**", "run.js")).sort.map do |path|
 end
 abort "no run.js files under #{parts}" if jobs.empty?
 
+# benchmarks.rb records a test it could not parse as "---(<raw output>)".
+# When that output still holds the test's own "OK in <time>s" line, the
+# program passed and only the harness misread it: a time in scientific
+# notation ("OK in 5.2e-06s"), or other text (the /usr/bin/time report, a
+# debug line) between the test's name and its result. Recover those times.
+RECOVERED = []
+def recover!(j, source)
+  j.each do |key, value|
+    next unless key.end_with?("-runtime") && value.is_a?(Hash)
+    test = key.delete_suffix("-runtime")
+    value.each do |run, v|
+      next unless v.is_a?(String)
+      m = v.match(/#{Regexp.escape(test)}: .*?OK in (\d+(?:\.\d+)?(?:e[-+]?\d+)?)s/m)
+      next unless m
+      value[run] = m[1].to_f
+      RECOVERED << "#{run} #{test} (#{source})"
+    end
+  end
+end
+jobs.each { |job| recover!(job[:run], "run"); recover!(job[:ref], "C/Clang reference") if job[:ref] }
+
 merged = {}
 pcs = {}
 jobs.each do |job|
@@ -90,6 +111,11 @@ rows.select { |x| x[:run] =~ /\AZane/ }.each do |z|
     rank = own ? "#{rel.index(own) + 1}/#{rel.size}" : "-"
     md << "| #{t} | #{format("%.3f", mine)} | #{own ? format("%.2f", own[1]) : "-"} | #{rank} | #{rel[0][0]} (#{format("%.2f", rel[0][1])}) |\n"
   end
+end
+unless RECOVERED.empty?
+  md << "\n<details><summary>#{RECOVERED.size} times recovered from raw output the harness misread</summary>\n\n"
+  RECOVERED.each { |r| md << "- #{r}\n" }
+  md << "\n</details>\n"
 end
 File.write(summary, md)
 puts md.lines.first(10).join

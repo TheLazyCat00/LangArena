@@ -46,21 +46,17 @@ Node(item Int, left Int, right Int) => init {
   right=I32.wrap(right);
 }
 
-type State = #struct {
+// One iteration's nodes, made and dropped by the iteration, as C makes and
+// frees its arena in each run.
+type Arena = #struct {
   nodes List<Node>;
-  result Int;
-  depth Int;
-  object Bool;
 }
 
-State(cfg Config, name String) => init {
+Arena() => init {
   nodes=List(Node);
-  result=Int(0);
-  depth=cfg:integer(name, "depth");
-  object=name=="Binarytrees::Obj";
 }
 
-Int build(this State, item Int, depth Int) mut {
+Int build(this Arena, item Int, depth Int) mut {
   index Int=this.nodes:size()+1;
   this.nodes!push(Node(item, Int(0), Int(0)));
   if(depth>0) {
@@ -72,7 +68,7 @@ Int build(this State, item Int, depth Int) mut {
   return index;
 }
 
-Int sum(this State, index Int) {
+Int sum(this Arena, index Int) {
   node Node=this.nodes[index];
   total Int=Int(node.item)+1;
   if(node.left>0) {
@@ -82,6 +78,18 @@ Int sum(this State, index Int) {
     total=total+this:sum(Int(node.right));
   }
   return total;
+}
+
+type State = #struct {
+  result Int;
+  depth Int;
+  object Bool;
+}
+
+State(cfg Config, name String) => init {
+  result=Int(0);
+  depth=cfg:integer(name, "depth");
+  object=name=="Binarytrees::Obj";
 }
 
 Unit prepare(this State) mut {
@@ -94,10 +102,9 @@ Unit step(this State, iteration Int) mut {
     this.result=u32(this.result+sum(tree));
   }
   mode:else() {
-    this.nodes=List(Node);
-    depth Int=this.depth;
-    index Int=this!build(Int(0), depth);
-    this.result=u32(this.result+this:sum(index));
+    nodes Arena=Arena();
+    index Int=nodes!build(Int(0), this.depth);
+    this.result=u32(this.result+nodes:sum(index));
   }
   return Unit();
 }

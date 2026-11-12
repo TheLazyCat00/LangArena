@@ -143,56 +143,83 @@ Unit prepare(this State) mut {
   return Unit();
 }
 
-List<I32> reconstruct(previous List<I32>, current Int) {
-  reverse List<I32> = List(I32);
-  at I32=I32.wrap(current);
-  i Int=Int(1);
-  i!to(previous:size()) {
-    if(at>0) {
-      reverse!push(at);
-      at=previous[Int(at)];
-    }
-  }
+List<I32> reversed(items List<I32>) {
   out List<I32> = List(I32);
   j Int=Int(1);
-  j!to(reverse:size()) {
-    out!push(reverse[reverse:size()-j+1]);
+  j!to(items:size()) {
+    out!push(items[items:size()-j+1]);
   }
   return out;
 }
 
+// The path to `current` along `previous`, from the start, whose entry is 0.
+List<I32> reconstruct(previous List<I32>, current Int) {
+  reverse List<I32> = List(I32);
+  at Int=current;
+  i Int=Int(1);
+  i!to(previous:size()) {
+    reverse!push(I32.wrap(at));
+    at=Int(previous[at]);
+    if(at==0) {
+      return reversed(reverse);
+    }
+  }
+  return reversed(reverse);
+}
+
+// The path to `target` through the BFS node `node`: each node's parent is
+// the node it was reached from, and the start's is 0.
+List<I32> trace(cells List<I32>, parents List<I32>, node Int, target Int) {
+  reverse List<I32> = List(I32);
+  reverse!push(I32.wrap(target));
+  at Int=node;
+  i Int=Int(1);
+  i!to(cells:size()) {
+    reverse!push(cells[at]);
+    at=Int(parents[at]);
+    if(at==0) {
+      return reversed(reverse);
+    }
+  }
+  return reversed(reverse);
+}
+
 List<I32> bfs(this State) {
-  if(this:start()==this:finish()) {
+  start Int=this:start();
+  target Int=this:finish();
+  if(start==target) {
     path List<I32> = List(I32);
-    path!push(I32.wrap(this:start()));
+    path!push(I32.wrap(start));
     return path;
   }
   n Int=this.cells:size();
-  previous List<I32> = filled(n, I32(0));
   visited List<Bool> = filled(n, Bool(false));
-  queue List<I32> = List(I32);
-  queue!push(I32.wrap(this:start()));
-  visited[this:start()]=Bool(true);
+  // The cells found so far in BFS order, each with the node it was found
+  // from; reading them in order is the queue.
+  cells List<I32> = List(I32);
+  parents List<I32> = List(I32);
+  cells!push(I32.wrap(start));
+  parents!push(I32(0));
+  visited[start]=Bool(true);
   read Int=Int(1);
   iteration Int=Int(1);
   iteration!to(n) {
-    if(read<=queue:size()) {
-      current I32=queue[read];
-      read=read+1;
+    if(read<=cells:size()) {
+      current Int=Int(cells[read]);
       j Int=Int(1);
-      j!to(this.cells[Int(current)].neighbors:size()) {
-        neighbor I32=this.cells[Int(current)].neighbors[j];
+      j!to(this.cells[current].neighbors:size()) {
+        neighbor I32=this.cells[current].neighbors[j];
         at Int=Int(neighbor);
-        if(at==this:finish()) {
-          previous[at]=current;
-          return reconstruct(previous, at);
+        if(at==target) {
+          return trace(cells, parents, read, at);
         }
         if(walkable(this.cells[at].kind) and ~visited[at]) {
           visited[at]=Bool(true);
-          previous[at]=current;
-          queue!push(neighbor);
+          cells!push(neighbor);
+          parents!push(I32.wrap(read));
         }
       }
+      read=read+1;
     }
   }
   return List(I32);

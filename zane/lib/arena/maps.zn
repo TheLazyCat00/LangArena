@@ -63,36 +63,34 @@ Unit put(this IntMap, key Int, value Int) mut {
   return Unit();
 }
 
+// Open addressing over a table of slots, each 0 (empty) or the 1-based
+// index of its entry in keys/values. Empty slots hold no String, so a large
+// map costs one Int per slot to create, not one String allocation.
 type StringMap = struct {
+  slots List<Int>;
   keys List<String>;
   values List<Int>;
-  used List<Bool>;
   entries Int;
 }
 
-StringMap(capacity Int) {
-  keys List<String> = List(String);
-  i Int=Int(1);
-  i!to(capacity) {
-    keys!push(String(""));
-  }
-  return init {
-    keys;
-    values=filled(capacity, Int(0));
-    used=filled(capacity, Bool(false));
-    entries=Int(0);
-  }
+StringMap(capacity Int) => init {
+  slots=filled(capacity, Int(0));
+  keys=List(String);
+  values=List(Int);
+  entries=Int(0);
 }
 
+// The slot that holds key, or the empty slot where it belongs; 0 if full.
 Int slot(this StringMap, key String) {
-  capacity Int=this.keys:size();
+  capacity Int=this.slots:size();
   index Int=rem(hash(key), capacity)+1;
   probe Int=Int(1);
   probe!to(capacity) {
-    if(~this.used[index]) {
+    entry Int=this.slots[index];
+    if(entry==0) {
       return index;
     }
-    if(this.keys[index]==key) {
+    if(this.keys[entry]==key) {
       return index;
     }
     index=rem(index, capacity)+1;
@@ -105,10 +103,11 @@ Int get(this StringMap, key String) {
   if(index==0) {
     return Int(0);
   }
-  if(this.used[index]) {
-    return this.values[index];
+  entry Int=this.slots[index];
+  if(entry==0) {
+    return Int(0);
   }
-  return Int(0);
+  return this.values[entry];
 }
 
 Bool has(this StringMap, key String) {
@@ -116,18 +115,22 @@ Bool has(this StringMap, key String) {
   if(index==0) {
     return Bool(false);
   }
-  return this.used[index];
+  return this.slots[index]>0;
 }
 
 Unit put(this StringMap, key String, value Int) mut {
   index Int=this:slot(key);
   if(index>0) {
-    if(~this.used[index]) {
+    entry Int=this.slots[index];
+    if(entry==0) {
+      this.keys!push(key);
+      this.values!push(value);
       this.entries=this.entries+1;
+      this.slots[index]=this.entries;
     }
-    this.used[index]=Bool(true);
-    this.keys[index]=key;
-    this.values[index]=value;
+    if(entry>0) {
+      this.values[entry]=value;
+    }
   }
   return Unit();
 }

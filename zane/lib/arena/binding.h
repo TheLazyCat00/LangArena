@@ -36,6 +36,7 @@ zane_bytes arena_fixed(double value, int64_t digits);
 zane_bytes arena_hex(int64_t value);
 arena_buffer *arena_buffer_new(int64_t size, int64_t value);
 void arena_buffer_free(arena_buffer *buffer);
+void arena_buffer_replace(arena_buffer *dst, arena_buffer *src);
 int64_t arena_buffer_size(const arena_buffer *buffer);
 int64_t arena_buffer_get(const arena_buffer *buffer, int64_t index);
 void arena_buffer_set(arena_buffer *buffer, int64_t index, int64_t value);

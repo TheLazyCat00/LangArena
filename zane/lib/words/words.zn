@@ -19,7 +19,7 @@ State(cfg Config, name String) => init {
 }
 
 Unit prepare(this State) mut {
-  out Buffer=buffer(Int(0), Int(0));
+  out ^Buffer=buffer(Int(0), Int(0));
   i Int=Int(1);
   i!to(this.n) {
     n Int=this.rng!next(this.wordLength)+this.rng!next(Int(3))+3;

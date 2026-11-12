@@ -103,7 +103,7 @@ Unit variable(this State, key String, value String) mut {
 
 Unit prepare(this State) mut {
   this!variable(String("TITLE"), String("Template title"));
-  out Buffer=buffer(Int(0), Int(0));
+  out ^Buffer=buffer(Int(0), Int(0));
   out!append("<html><body><h1>{{TITLE}}</h1><p>Lorem {ipsum} dolor {sit} amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore {et} dolore magna aliqua. </p><table>");
   count Int=this.count;
   i Int=Int(0);

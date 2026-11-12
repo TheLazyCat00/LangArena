@@ -231,6 +231,13 @@ void arena_buffer_free(arena_buffer *b) {
   free(b->data);
   free(b);
 }
+// Setter for a settled Buffer: dst keeps its address and takes src's bytes;
+// src is consumed (ffi.md section 4.3).
+void arena_buffer_replace(arena_buffer *dst, arena_buffer *src) {
+  free(dst->data);
+  *dst = *src;
+  free(src);
+}
 int64_t arena_buffer_size(const arena_buffer *b) { return (int64_t)b->size; }
 int64_t arena_buffer_get(const arena_buffer *b, int64_t i) {
   if (i < 1 || (uint64_t)i > b->size)

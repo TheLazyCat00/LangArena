@@ -12,6 +12,7 @@ type Config = #handle {
 
 type Buffer = #handle {
   cType = "arena_buffer";
+  set = "arena_buffer_replace";
   free = "arena_buffer_free";
 }
 
@@ -196,7 +197,7 @@ Int stop(this Host,started Int) mut => Int(this!_stop(started));
 // Byte-oriented scans use a single handle instead of repeatedly converting
 // a value-type String into its primitive payload at each character.
 ^Buffer bytes(text String) {
-  out Buffer=buffer(Int(0), Int(0));
+  out ^Buffer=buffer(Int(0), Int(0));
   out!append(text);
   return out;
 }

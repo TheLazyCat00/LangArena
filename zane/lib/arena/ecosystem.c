@@ -58,6 +58,17 @@ zane_bytes arena_base64_decode(zane_bytes input) {
   if (!input.size)
     return copy("", 0);
   const uint8_t *s = input.data;
+  size_t padding = 0;
+  if (s[input.size - 1] == '=') padding++;
+  if (s[input.size - 2] == '=') padding++;
+  for (size_t index = 0; index < input.size; index++) {
+    if (s[index] == '=') {
+      if (index < input.size - padding || index % 4 < 2)
+        die("invalid base64 padding");
+    } else if (index >= input.size - padding || decode(s[index]) < 0) {
+      die("invalid base64 byte");
+    }
+  }
   size_t n = input.size / 4 * 3;
   if (s[input.size - 1] == '=')
     n--;
@@ -247,10 +258,10 @@ static bool next_match(const arena_regex *regex, const char *text, size_t length
 #ifdef REG_STARTEND
   match->rm_so = (regoff_t)offset;
   match->rm_eo = (regoff_t)length;
-  return regexec(&regex->compiled, text, 1, match, REG_STARTEND) == 0;
+  return regexec(&regex->compiled, text, 1, match, REG_STARTEND | (offset ? REG_NOTBOL : 0)) == 0;
 #else
   (void)length;
-  if (regexec(&regex->compiled, text + offset, 1, match, 0)) return false;
+  if (regexec(&regex->compiled, text + offset, 1, match, offset ? REG_NOTBOL : 0)) return false;
   match->rm_so += (regoff_t)offset;
   match->rm_eo += (regoff_t)offset;
   return true;

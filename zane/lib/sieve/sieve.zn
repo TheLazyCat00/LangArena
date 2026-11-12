@@ -17,6 +17,7 @@ Unit prepare(this State) mut {
 }
 
 Unit step(this State, iteration Int) mut {
+  if(this.limit<2) {return Unit();}
   primes Buffer=buffer(this.limit+1, Int(1));
   primes!set(Int(1), Int(0));
   primes!set(Int(2), Int(0));

@@ -161,6 +161,11 @@ List<Int> reconstruct(previous List<Int>, current Int) {
 }
 
 List<Int> bfs(this State) {
+  if(this:start()==this:finish()) {
+    path List<Int> = List(Int);
+    path!push(this:start());
+    return path;
+  }
   n Int=this.cells:size();
   previous List<Int> = filled(n, Int(0));
   visited List<Bool> = filled(n, Bool(false));

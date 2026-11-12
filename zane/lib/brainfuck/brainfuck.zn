@@ -207,8 +207,25 @@ Unit resetRandom(this State) mut {
   return Unit();
 }
 
+Bool balanced(source String) {
+  depth Int=Int(0);
+  i Int=Int(1);
+  i!to(length(source)) {
+    value Int=byte(source,i);
+    if(value==91) {depth=depth+1;}
+    if(value==93) {
+      if(depth==0) {return Bool(false);}
+      depth=depth-1;
+    }
+  }
+  return depth==0;
+}
+
 Result execute(this Host, cfg Config, name String) mut {
   state State=State(cfg, name);
+  if(~balanced(state.source) or ~balanced(state.warmSource)) {
+    this!fail(String("Unbalanced Brainfuck brackets"));
+  }
   state!prepare();
   iterations Int=cfg:integer(name, "iterations");
   warm Int=max(Int(1), iterations/5);

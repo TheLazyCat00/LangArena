@@ -95,6 +95,20 @@ arena_config *arena_parse(zane_bytes text) {
   c->doc = yyjson_read((const char *)text.data, text.size, 0);
   if (!c->doc || !yyjson_is_arr(yyjson_doc_get_root(c->doc)))
     die("config must be a JSON array");
+  yyjson_val *root = yyjson_doc_get_root(c->doc);
+  size_t index, count;
+  yyjson_val *row;
+  yyjson_arr_foreach(root, index, count, row) {
+    const char *name = yyjson_get_str(yyjson_obj_get(row, "name"));
+    if (!name) die("missing benchmark name");
+    size_t previous_index, previous_count;
+    yyjson_val *previous;
+    yyjson_arr_foreach(root, previous_index, previous_count, previous) {
+      if (previous_index >= index) break;
+      const char *previous_name = yyjson_get_str(yyjson_obj_get(previous, "name"));
+      if (!strcmp(name, previous_name)) die("duplicate benchmark name");
+    }
+  }
   return c;
 }
 void arena_config_free(arena_config *c) {

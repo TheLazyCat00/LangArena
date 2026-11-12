@@ -34,8 +34,10 @@ Encoded encode(input String) {
       code Int=dict:get(current);
       out!push(shiftRightLogical(code, Int(8)));
       out!push(bitAnd(code, Int(255)));
-      dict!put(combined, next);
-      next=next+1;
+      if(next<65536) {
+        dict!put(combined, next);
+        next=next+1;
+      }
       current=nextChar;
     }
   }
@@ -75,7 +77,9 @@ String decode(encoded Encoded) {
       value=old+character(byte(old, Int(1)));
     }
     out!append(value);
-    dict!push(old+character(byte(value, Int(1))));
+    if(dict:size()<65536) {
+      dict!push(old+character(byte(value, Int(1))));
+    }
     old=value;
   }
   return out:string();

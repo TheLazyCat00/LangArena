@@ -36,5 +36,19 @@ Unit main() {
   rng Rng=Rng();random Buffer=buffer(Int(0),Int(0));
   k Int=Int(1);k!to(Int(1001)) {value Int=rng!next(Int(256));random!push(value);}
   host!roundTrip(random:string());
+  anchored Regex=regex(String("^a"),Bool(false));
+  host!require(anchored:count(String("aaa"))==1, String("Regex start anchor"));
+  suffix Matches=regexMatches(anchored,String("aaa"));
+  host!require(suffix:count()==1, String("Regex match spans preserve anchors"));
+  host!require(base64Decode(String("TQ=="))==String("M"),String("Base64 double padding"));
+  host!require(base64Decode(String("TWE="))==String("Ma"),String("Base64 single padding"));
+  largeInput Buffer=buffer(Int(0),Int(0));
+  sample Int=Int(1);
+  sample!to(Int(500000)) {
+    value Int=rng!next(Int(256));
+    largeInput!push(value);
+  }
+  largeEncoded lzw$Encoded=lzw$encode(largeInput:string());
+  host!require(lzw$decode(largeEncoded)==largeInput:string(),String("LZW dictionary saturation"));
   return Unit();
 }

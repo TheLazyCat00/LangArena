@@ -34,6 +34,22 @@ class RunnerTests(unittest.TestCase):
         result = self.run_config(config)
         self.assertEqual(result.stdout.count(": OK "), 3)
 
+    def test_duplicate_names_are_rejected(self):
+        self.run_config([copy.deepcopy(FIXTURE[0]), copy.deepcopy(FIXTURE[0])], expected=2)
+
+    def test_malformed_brainfuck_is_rejected(self):
+        for program in ('+[', ']+'):
+            config = [copy.deepcopy(next(row for row in FIXTURE if row['name'] == 'Brainfuck::Recursion'))]
+            config[0]['program'] = program
+            self.run_config(config, expected=2)
+
+    def test_single_cell_maze_path(self):
+        self.run_config([dict(name='Maze::BFS', w=3, h=3, iterations=1, warmup_iterations=0, checksum=2)])
+
+    def test_sieve_below_first_prime(self):
+        for limit in (0, 1):
+            self.run_config([dict(name='Etc::Sieve', limit=limit, iterations=1, warmup_iterations=0, checksum=0)])
+
     def test_case_insensitive_filter(self):
         result = self.run_config(FIXTURE, 'bInArYtReEs')
         self.assertEqual(result.stdout.count(': OK '), 2)

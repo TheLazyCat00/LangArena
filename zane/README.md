@@ -51,12 +51,13 @@ bindings have no mutable global state.
 
 Graph connectivity, maze cells, and calculator AST links use indices into
 native containers. Bulk integer data whose range is bounded by the workload
-size is stored as core's 32-bit `I32`: graph and maze adjacency, Life
-neighbors, BWT suffix positions and ranks, sort inputs (including the
-`qsort` copy for `Sort::Self`), binary-tree arena nodes, and priority-queue
-entries. Loop counters, scalar indices, checksums, hashes, RNG state, and the
-hash maps' values (the calculator stores 64-bit results there) use core's
-64-bit `Int`.
+size is stored as core's 32-bit `I32`: graph and maze adjacency, BWT
+suffix positions and ranks, sort inputs (including the `qsort` copy for
+`Sort::Self`), binary-tree arena nodes, and priority-queue entries. Loop
+counters, scalar indices, checksums, hashes, RNG state, the hash maps'
+values (the calculator stores 64-bit results there), and Life's
+eight-entry neighbor lists (measured slower as `I32`, since every read
+widens) use core's 64-bit `Int`.
 Byte workloads use a C-backed byte buffer. These layouts affect memory and
 speed.
 The reference's `Hash::SHA256` is a custom small hash; this implementation

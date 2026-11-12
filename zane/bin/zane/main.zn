@@ -10,7 +10,7 @@ import logparser;
 import maze;
 import graph;
 import neural;
-import cache;
+import cachesim;
 import words;
 import distance;
 import sort;
@@ -172,7 +172,7 @@ Unit main() {
         result=host!words$execute(cfg, name);
       }
       found!elif(contains(name, "Etc::CacheSimulation")) {
-        result=host!cache$execute(cfg, name);
+        result=host!cachesim$execute(cfg, name);
       }
       found!elif(contains(name, "Etc::NeuralNet")) {
         result=host!neural$execute(cfg, name);

@@ -99,12 +99,13 @@ Encoded(data String, bits Int, frequencies List<Int>) => init {
 }
 
 Encoded encode(input String) {
+  inputBytes Buffer=bytes(input);
   freq List<Int> = frequencies(input);
   table Table=Table(freq);
   encoder Encoder=Encoder();
   i Int=Int(1);
   i!to(length(input)) {
-    encoder!symbol(table, byte(input, i));
+    encoder!symbol(table, byte(inputBytes, i));
   }
   encoder.pending=encoder.pending+1;
   low Int=encoder.low;

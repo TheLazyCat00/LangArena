@@ -13,10 +13,11 @@ String testData(n Int) {
 }
 
 List<Int> frequencies(data String) {
+  input Buffer=bytes(data);
   out List<Int> = filled(Int(256), Int(0));
   i Int=Int(1);
-  i!to(length(data)) {
-    index Int=byte(data, i)+1;
+  i!to(length(input)) {
+    index Int=byte(input, i)+1;
     out[index]=out[index]+1;
   }
   return out;
@@ -59,12 +60,12 @@ String flush(this BitWriter) mut {
 }
 
 type BitReader = #struct {
-  data String;
+  data Buffer;
   position Int;
 }
 
 BitReader(data String) => init {
-  data;
+  data=bytes(data);
   position=Int(0);
 }
 

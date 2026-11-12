@@ -112,6 +112,11 @@ Int get(this Sorted, index Int) => Int(this:_ffiSortedGet(index));
 Int u32(value Int) => bitAnd(value, Int(4294967295));
 Int rem(value Int, divisor Int) => value-value/divisor*divisor;
 Int hash(text String) {
+  // Keep large strings behind one owned handle across the byte-reading loop.
+  if(length(text)>256) {
+    data Buffer=bytes(text);
+    return hash(data);
+  }
   value Int=Int(5381);
   i Int=Int(1);
   i!to(length(text)) {
@@ -187,3 +192,24 @@ List<Bool> filled(n Int, value Bool) {
 
 @primitives$I64 _stop(this Host,started @primitives$I64) mut foreign "arena_stop";
 Int stop(this Host,started Int) mut => Int(this!_stop(started));
+
+// Byte-oriented scans use a single handle instead of repeatedly converting
+// a value-type String into its primitive payload at each character.
+^Buffer bytes(text String) {
+  out Buffer=buffer(Int(0), Int(0));
+  out!append(text);
+  return out;
+}
+
+Int length(text Buffer) => text:size();
+Int byte(text Buffer, index Int) => text:get(index);
+@primitives$String _bufferSlice(this Buffer, start @primitives$I64, size @primitives$I64) foreign "arena_buffer_slice";
+String slice(text Buffer, start Int, size Int) => String(text:_bufferSlice(start, size));
+Int hash(text Buffer) {
+  value Int=Int(5381);
+  i Int=Int(1);
+  i!to(text:size()) {
+    value=u32(value*33+text:get(i));
+  }
+  return value;
+}

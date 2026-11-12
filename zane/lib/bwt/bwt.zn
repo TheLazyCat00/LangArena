@@ -111,6 +111,7 @@ Unit sort(this Suffixes, low Int, high Int) mut {
 }
 
 Encoded encode(input String) {
+  inputBytes Buffer=bytes(input);
   n Int=length(input);
   if(n==0) {
     return Encoded(String(""), Int(0));
@@ -127,18 +128,18 @@ Encoded encode(input String) {
   seen List<Int> = filled(Int(256), Int(0));
   j Int=Int(1);
   j!to(n) {
-    value Int=byte(input, j)+1;
+    value Int=byte(inputBytes, j)+1;
     position Int=positions[value]+seen[value]+1;
     indices[position]=j;
     seen[value]=seen[value]+1;
   }
   ranks List<Int> = filled(n, Int(0));
   current Int=Int(0);
-  previous Int=byte(input, indices[Int(1)]);
+  previous Int=byte(inputBytes, indices[Int(1)]);
   p Int=Int(1);
   p!to(n) {
     index Int=indices[p];
-    value Int=byte(input, index);
+    value Int=byte(inputBytes, index);
     if(value~=previous) {
       current=current+1;
       previous=value;
@@ -171,17 +172,18 @@ Encoded encode(input String) {
   q!to(n) {
     suffix Int=suffixes.indices[q];
     first Bool=if(suffix==1) {
-      out!push(byte(input, n));
+      out!push(byte(inputBytes, n));
       original=q;
     }
     first:else() {
-      out!push(byte(input, suffix-1));
+      out!push(byte(inputBytes, suffix-1));
     }
   }
   return Encoded(out:string(), original);
 }
 
 String decode(encoded Encoded) {
+  inputBytes Buffer=bytes(encoded.data);
   n Int=length(encoded.data);
   if(n==0) {
     return String("");
@@ -198,7 +200,7 @@ String decode(encoded Encoded) {
   seen List<Int> = filled(Int(256), Int(0));
   j Int=Int(1);
   j!to(n) {
-    value Int=byte(encoded.data, j)+1;
+    value Int=byte(inputBytes, j)+1;
     position Int=positions[value]+seen[value]+1;
     next[position]=j;
     seen[value]=seen[value]+1;
@@ -208,7 +210,7 @@ String decode(encoded Encoded) {
   k Int=Int(1);
   k!to(n) {
     index=next[index];
-    out!push(byte(encoded.data, index));
+    out!push(byte(inputBytes, index));
   }
   return out:string();
 }

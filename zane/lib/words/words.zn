@@ -5,7 +5,7 @@ import arena$;
 type State = #struct {
   n Int;
   wordLength Int;
-  text String;
+  text Buffer;
   rng Rng;
   result Int;
 }
@@ -13,7 +13,7 @@ type State = #struct {
 State(cfg Config, name String) => init {
   n=cfg:integer(name, "words");
   wordLength=cfg:integer(name, "word_len");
-  text=String("");
+  text=buffer(Int(0), Int(0));
   rng=Rng();
   result=Int(0);
 }
@@ -32,7 +32,7 @@ Unit prepare(this State) mut {
       out!push(Int(32));
     }
   }
-  this.text=out:string();
+  this.text=out;
   return Unit();
 }
 

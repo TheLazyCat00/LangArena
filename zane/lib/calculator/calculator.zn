@@ -32,14 +32,14 @@ type Node = variant {
 }
 
 type Parser = #struct {
-  text String;
+  text Buffer;
   position Int;
   nodes List<Node>;
   expressions List<Int>;
 }
 
 Parser(text String) => init {
-  text;
+  text=bytes(text);
   position=Int(1);
   nodes=List(Node);
   expressions=List(Int);
@@ -310,7 +310,7 @@ State(cfg Config, name String) => init {
 
 Unit prepare(this State) mut {
   this.text=this!program();
-  this.ast.text=this.text;
+  this.ast=Parser(this.text);
   interpret Bool=this.interpret;
   if(interpret) {
     this.ast!parseProgram();

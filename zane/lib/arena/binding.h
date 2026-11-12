@@ -75,3 +75,5 @@ arena_matches *arena_regex_matches(const arena_regex *regex, const char *text);
 void arena_matches_free(arena_matches *matches);
 int64_t arena_matches_count(const arena_matches *matches);
 int64_t arena_matches_get(const arena_matches *matches, int64_t index, bool end);
+
+zane_bytes arena_buffer_slice(const arena_buffer *buffer, int64_t start, int64_t size);

@@ -137,6 +137,7 @@ Encoded(data String, bits Int, frequencies List<Int>) => init {
 }
 
 Encoded encode(input String) {
+  inputBytes Buffer=bytes(input);
   freq List<Int> = frequencies(input);
   if(length(input)==0) {
     return Encoded(String(""), Int(0), freq);
@@ -148,7 +149,7 @@ Encoded encode(input String) {
   out BitWriter=BitWriter();
   i Int=Int(1);
   i!to(length(input)) {
-    value Int=byte(input, i)+1;
+    value Int=byte(inputBytes, i)+1;
     codeLength Int=tree.lengths[value];
     j Int=Int(1);
     j!to(codeLength) {

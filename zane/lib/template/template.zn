@@ -73,7 +73,7 @@ String city(index Int) {
 
 type State = #struct {
   count Int;
-  text String;
+  text Buffer;
   rendered String;
   variables StringMap;
   values List<String>;
@@ -84,7 +84,7 @@ type State = #struct {
 
 State(cfg Config, name String) => init {
   count=cfg:integer(name, "count");
-  text=String("");
+  text=buffer(Int(0), Int(0));
   rendered=String("");
   variables=StringMap(cfg:integer(name, "count")*6+20);
   values=List(String);
@@ -117,7 +117,7 @@ Unit prepare(this State) mut {
     this!variable(String("CITY")+String(i), city(rem(i, Int(6))));
   }
   out!append("</table></body></html>");
-  this.text=out:string();
+  this.text=out;
   return Unit();
 }
 
@@ -140,7 +140,7 @@ String trim(text String) {
   return slice(text, start, finish-start+1);
 }
 
-Int close(text String, start Int) {
+Int close(text Buffer, start Int) {
   i Int=start;
   i!to(length(text)-1) {
     if(byte(text, i)==125 and byte(text, i+1)==125) {
@@ -186,7 +186,7 @@ Unit renderParse(this State) mut {
 }
 
 Unit renderRegex(this State) mut {
-  found Matches=regexMatches(this.pattern, this.text);
+  found Matches=regexMatches(this.pattern, this.text:string());
   out Buffer=buffer(Int(0), Int(0));
   position Int=Int(1);
   i Int=Int(1);

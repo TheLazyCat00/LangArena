@@ -284,3 +284,10 @@ void arena_sorted_free(arena_sorted *s) {
   free(s->data);
   free(s);
 }
+
+zane_bytes arena_buffer_slice(const arena_buffer *b, int64_t start, int64_t n) {
+  if (start < 1 || n < 0 || (uint64_t)(start - 1) > b->size ||
+      (uint64_t)n > b->size - (size_t)(start - 1))
+    die("buffer slice out of bounds");
+  return n ? bytes((const char *)b->data + start - 1, (size_t)n) : bytes("", 0);
+}

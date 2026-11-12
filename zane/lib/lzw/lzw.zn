@@ -12,6 +12,7 @@ Encoded(data String) => init {
 }
 
 Encoded encode(input String) {
+  inputBytes Buffer=bytes(input);
   if(length(input)==0) {
     return Encoded(String(""));
   }
@@ -22,10 +23,10 @@ Encoded encode(input String) {
   }
   next Int=Int(256);
   out Buffer=buffer(Int(0), Int(0));
-  current String=character(byte(input, Int(1)));
+  current String=character(byte(inputBytes, Int(1)));
   j Int=Int(2);
   j!to(length(input)) {
-    nextChar String=character(byte(input, j));
+    nextChar String=character(byte(inputBytes, j));
     combined String=current+nextChar;
     found Bool=if(dict:has(combined)) {
       current=combined;
@@ -49,6 +50,7 @@ Encoded encode(input String) {
 
 String decode(encoded Encoded) {
   input String=encoded.data;
+  inputBytes Buffer=bytes(input);
   if(length(input)==0) {
     return String("");
   }
@@ -57,14 +59,14 @@ String decode(encoded Encoded) {
   i!to(Int(255)) {
     dict!push(character(i));
   }
-  code Int=byte(input, Int(1))*256+byte(input, Int(2));
+  code Int=byte(inputBytes, Int(1))*256+byte(inputBytes, Int(2));
   old String=dict[code+1];
   out Buffer=buffer(Int(0), Int(0));
   out!append(old);
   position Int=Int(3);
   j Int=Int(1);
   j!to(length(input)/2-1) {
-    next Int=byte(input, position)*256+byte(input, position+1);
+    next Int=byte(inputBytes, position)*256+byte(inputBytes, position+1);
     position=position+2;
     value String=String("");
     known Bool=if(next<dict:size()) {

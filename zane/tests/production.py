@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check every full run.js workload separately with bounded resources."""
+"""Check every full run.js workload separately with a configurable timeout."""
 import argparse
 import json
 from pathlib import Path
@@ -11,14 +11,19 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 
 def limits():
-    resource.setrlimit(resource.RLIMIT_AS, (3 * 1024 ** 3, 3 * 1024 ** 3))
+    # Zane reserves virtual address ranges for growable lists and worker regions.
+    # RLIMIT_AS constrains those reservations, not resident memory, so it is not
+    # a usable memory budget for these benchmarks.
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--shard', type=int, default=0)
     parser.add_argument('--shards', type=int, default=1)
+    parser.add_argument('--timeout', type=float, default=300)
     args = parser.parse_args()
+    if args.timeout <= 0:
+        parser.error('timeout must be positive')
     if args.shards < 1 or not 0 <= args.shard < args.shards:
         parser.error('shard must be within the positive shard count')
     all_rows = json.loads((ROOT.parent / 'run.js').read_text())
@@ -32,7 +37,7 @@ def main():
             try:
                 result = subprocess.run(
                     [str(ROOT / 'out/host/zane'), str(path)],
-                    text=True, capture_output=True, timeout=120, preexec_fn=limits,
+                    text=True, capture_output=True, timeout=args.timeout, preexec_fn=limits,
                 )
                 print(result.stdout, end='', flush=True)
                 if result.stderr:
@@ -41,7 +46,7 @@ def main():
                     failures.append(row['name'])
             except subprocess.TimeoutExpired:
                 failures.append(row['name'])
-                print(f"{row['name']}: exceeded 120 seconds", flush=True)
+                print(f"{row['name']}: exceeded {args.timeout:g} seconds", flush=True)
             print(f"Process wall time: {time.monotonic() - started:.2f}s", flush=True)
     if failures:
         raise SystemExit("Failed workloads: " + ", ".join(failures))

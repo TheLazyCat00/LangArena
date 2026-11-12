@@ -1,0 +1,20 @@
+package csvbench;
+import core$;
+import math$;
+import arena$;
+
+type State = #struct {rows Int;text String;result Int;rng Rng;}
+State(cfg Config,name String) => init{rows=cfg:integer(name,"rows");text=String("");result=Int(0);rng=Rng();}
+Unit prepare(this State) mut {out Buffer=buffer(Int(0),Int(0));i Int=Int(0);i!to(this.rows-1) {x Float=this.rng!nextFloat();z Float=this.rng!nextFloat();y Float=this.rng!nextFloat();truth String=String("true");if(rem(i,Int(2))~=0) {truth=String("false");}out!append("\"point "+character(Int(65)+rem(i,Int(26)))+character(Int(92))+"n, \"\""+String(rem(i,Int(100)))+"\"\"\","+fixed(x,Int(10))+",,"+fixed(z,Int(10))+",\"["+truth+character(Int(92))+"n, "+String(rem(i,Int(100)))+"]\","+fixed(y,Int(10))+"\n");}this.text=out:string();return Unit();}
+Unit step(this State,iteration Int) mut {points Csv=csvParse(this.text);if(points:count()==0) {return Unit();}x Float=Float(0.0);y Float=Float(0.0);z Float=Float(0.0);i Int=Int(1);i!to(points:count()) {x=x+points:get(i,Int(0));y=y+points:get(i,Int(1));z=z+points:get(i,Int(2));}n Float=Float(points:count());this.result=u32(this.result+hashFloat(x/n)+hashFloat(y/n)+hashFloat(z/n));return Unit();}
+Int checksum(this State) => u32(this.result+hash(this.text));
+
+Unit resetRandom(this State) mut {return Unit();}
+
+Result execute(this Host,cfg Config,name String) mut {
+ state State=State(cfg,name);state!prepare();iterations Int=cfg:integer(name,"iterations");warm Int=max(Int(1),iterations/5);
+ if(cfg:has(name,"warmup_iterations")) {warm=cfg:integer(name,"warmup_iterations");}
+ i Int=Int(0);i!to(warm-1) {state!step(i);}state!resetRandom();started Int=this!start(name);
+ j Int=Int(0);j!to(iterations-1) {state!step(j);}actual Int=u32(state:checksum());expected Int=u32(cfg:integer(name,"checksum"));
+ nanos Int=this!finish(started,actual,expected);failed Int=Int(0);if(actual~=expected) {failed=Int(1);}return Result(nanos,failed);
+}

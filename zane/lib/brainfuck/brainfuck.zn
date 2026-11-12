@@ -1,0 +1,36 @@
+package brainfuck;
+import core$;
+import math$;
+import arena$;
+
+type Tape = #struct {bytes Buffer;position Int;result Int;}
+Tape() => init{bytes=buffer(Int(30000),Int(0));position=Int(1);result=Int(0);}
+Unit command(this Tape,op Int) mut {value Int=this.bytes:get(this.position);if(op==43) {this.bytes!set(this.position,rem(value+1,Int(256)));}if(op==45) {this.bytes!set(this.position,rem(value+255,Int(256)));}if(op==62) {this.position=this.position+1;if(this.position>this.bytes:size()) {this.bytes!push(Int(0));}}if(op==60) {this.position=max(Int(1),this.position-1);}if(op==46) {this.result=u32(this.result*4+value);}return Unit();}
+type Op = #variant {command Int;loop ListRef<Op>;}
+type Parser = #struct {text String;position Int;}
+Parser(text String) => init{text;position=Int(1);}
+^ListRef<Op> parse(this Parser) mut {ops ^ListRef<Op> = ListRef(Op);active Bool=Bool(true);i Int=Int(1);i!to(length(this.text)) {if(active and this.position<=length(this.text)) {c Int=byte(this.text,this.position);this.position=this.position+1;closed Bool=if(c==93) {active=Bool(false);}closed:else() {branch Bool=if(c==91) {ops!push(Op.loop(this!parse()));}branch:else() {if(c==43 or c==45 or c==62 or c==60 or c==46) {ops!push(Op.command(c));}}}}}return ops;}
+Unit runOps(this Tape,ops ListRef<Op>) mut {i Int=Int(1);i!to(ops:size()) {ignored Unit=match(ops[i]) {c command => this!command(c);nested loop => this!runLoop(nested);}}return Unit();}
+Unit runLoop(this Tape,ops ListRef<Op>) mut {i Int=Int(1);i!to(Int(9223372036854775807)) {if(this.bytes:get(this.position)==0) {return Unit();}this!runOps(ops);}return Unit();}
+Int runArray(source String) {
+ commands List<Int> = List(Int);i Int=Int(1);i!to(length(source)) {c Int=byte(source,i);if(c==43 or c==45 or c==62 or c==60 or c==46 or c==91 or c==93 or c==44) {commands!push(c);}}
+ jumps List<Int> = filled(commands:size(),Int(0));stack List<Int> = List(Int);j Int=Int(1);j!to(commands:size()) {if(commands[j]==91) {stack!push(j);}if(commands[j]==93) {if(stack:size()==0) {return Int(0);}start Int=stack!remove(stack:size());jumps[start]=j;jumps[j]=start;}}
+ if(stack:size()>0) {return Int(0);}tape Tape=Tape();pc Int=Int(1);step Int=Int(1);step!to(Int(9223372036854775807)) {if(pc>commands:size()) {return tape.result;}c Int=commands[pc];tape!command(c);jump Bool=Bool(false);if(c==91) {jump=tape.bytes:get(tape.position)==0;}if(c==93) {jump=tape.bytes:get(tape.position)~=0;}branch Bool=if(jump) {pc=jumps[pc];}branch:else() {pc=pc+1;}}return tape.result;
+}
+Int runRecursive(source String) {parser Parser=Parser(source);ops ListRef<Op> = parser!parse();tape Tape=Tape();tape!runOps(ops);return tape.result;}
+type State = #struct {source String;warmSource String;result Int;recursive Bool;}
+State(cfg Config,name String) => init{source=cfg:text(name,"program");warmSource=cfg:text(name,"warmup_program");result=Int(0);recursive=name=="Brainfuck::Recursion";}
+Unit prepare(this State) mut {return Unit();}
+Unit warm(this State,iteration Int) mut {branch Bool=if(this.recursive) {runRecursive(this.warmSource);}branch:else() {runArray(this.warmSource);}return Unit();}
+Unit step(this State,iteration Int) mut {value Int=Int(0);branch Bool=if(this.recursive) {value=runRecursive(this.source);}branch:else() {value=runArray(this.source);}this.result=u32(this.result+value);return Unit();}
+Int checksum(this State) => this.result;
+
+Unit resetRandom(this State) mut {return Unit();}
+
+Result execute(this Host,cfg Config,name String) mut {
+ state State=State(cfg,name);state!prepare();iterations Int=cfg:integer(name,"iterations");warm Int=max(Int(1),iterations/5);
+ if(cfg:has(name,"warmup_iterations")) {warm=cfg:integer(name,"warmup_iterations");}
+ i Int=Int(0);i!to(warm-1) {state!warm(i);}state!resetRandom();started Int=this!start(name);
+ j Int=Int(0);j!to(iterations-1) {state!step(j);}actual Int=u32(state:checksum());expected Int=u32(cfg:integer(name,"checksum"));
+ nanos Int=this!finish(started,actual,expected);failed Int=Int(0);if(actual~=expected) {failed=Int(1);}return Result(nanos,failed);
+}

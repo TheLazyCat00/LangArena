@@ -1,0 +1,24 @@
+package matmul;
+import core$;
+import math$;
+import arena$;
+
+type Matrix = struct {rows List<List<Float>>;}
+Matrix(n Int) {rows List<List<Float>> = List(List<Float>);tmp Float=Float(1.0)/Float(n)/Float(n);i Int=Int(0);i!to(n-1) {row List<Float> = List(Float);j Int=Int(0);j!to(n-1) {row!push(tmp*Float(i-j)*Float(i+j));}rows!push(row);}return init{rows;}}
+type State = #struct {a Matrix;b Matrix;result Int;threads Int;}
+State(cfg Config,name String) => init{a=Matrix(cfg:integer(name,"n"));b=Matrix(cfg:integer(name,"n"));result=Int(0);threads=Int(1);}
+Unit prepare(this State) mut {return Unit();}
+List<List<Float>> transpose(b Matrix) {rows List<List<Float>> = List(List<Float>);i Int=Int(1);i!to(b.rows:size()) {row List<Float> = List(Float);j Int=Int(1);j!to(b.rows:size()) {row!push(b.rows[j][i]);}rows!push(row);}return rows;}
+List<List<Float>> multiplyRows(a Matrix,t List<List<Float>>,start Int,end Int) {out List<List<Float>> = List(List<Float>);i Int=start;i!to(end) {row List<Float> = List(Float);j Int=Int(1);j!to(t:size()) {value Float=Float(0.0);k Int=Int(1);k!to(t:size()) {value=value+a.rows[i][k]*t[j][k];}row!push(value);}out!push(row);}return out;}
+Unit step(this State,iteration Int) mut {t List<List<Float>> = transpose(this.b);n Int=this.a.rows:size();c List<List<Float>> = multiplyRows(this.a,t,Int(1),n);this.result=u32(this.result+hashFloat(c[n/2+1][n/2+1]));return Unit();}
+Int checksum(this State) => this.result;
+
+Unit resetRandom(this State) mut {return Unit();}
+
+Result execute(this Host,cfg Config,name String) mut {
+ state State=State(cfg,name);state!prepare();iterations Int=cfg:integer(name,"iterations");warm Int=max(Int(1),iterations/5);
+ if(cfg:has(name,"warmup_iterations")) {warm=cfg:integer(name,"warmup_iterations");}
+ i Int=Int(0);i!to(warm-1) {state!step(i);}state!resetRandom();started Int=this!start(name);
+ j Int=Int(0);j!to(iterations-1) {state!step(j);}actual Int=u32(state:checksum());expected Int=u32(cfg:integer(name,"checksum"));
+ nanos Int=this!finish(started,actual,expected);failed Int=Int(0);if(actual~=expected) {failed=Int(1);}return Result(nanos,failed);
+}

@@ -1,9 +1,41 @@
 package zane;
-
 import core$;
-
-@primitives$Unit main() {
-	text @primitives$String("hello world");
-	@program$console!print(text);
-	return @primitives$Unit();
+import csvbench;
+import jsonbench;
+import base64bench;
+import life;
+import raytracer;
+import bufferhash;
+import brainfuck;
+import mandelbrot;
+import nbody;
+import fannkuch;
+import matmul;
+import spectralnorm;
+import sieve;
+import binarytrees;
+import arena$;
+Unit main() {
+ host Host foreign "arena_system";host!announce();runtime Runtime(@program$runtime);args List<String> = runtime:arguments();
+ path String=String("../run.js");filter String=String("");if(args:size()>0) {path=args[Int(1)];}if(args:size()>1) {filter=args[Int(2)];}
+ text String=host!read(path);cfg Config=parse(text);nanos Int=Int(0);failures Int=Int(0);count Int=Int(0);i Int=Int(1);i!to(cfg:count()) {
+  name String=cfg:name(i);if(contains(name,filter)) {result Result=Result(Int(0),Int(1));found Bool=Bool(false);
+   found!elif(contains(name,"Binarytrees::")) {result=host!binarytrees$execute(cfg,name);}
+found!elif(contains(name,"Etc::Sieve")) {result=host!sieve$execute(cfg,name);}
+found!elif(contains(name,"CLBG::Spectralnorm")) {result=host!spectralnorm$execute(cfg,name);}
+found!elif(contains(name,"Matmul::")) {result=host!matmul$execute(cfg,name);}
+found!elif(contains(name,"CLBG::Fannkuchredux")) {result=host!fannkuch$execute(cfg,name);}
+found!elif(contains(name,"CLBG::Nbody")) {result=host!nbody$execute(cfg,name);}
+found!elif(contains(name,"CLBG::Mandelbrot")) {result=host!mandelbrot$execute(cfg,name);}
+found!elif(contains(name,"Brainfuck::")) {result=host!brainfuck$execute(cfg,name);}
+found!elif(contains(name,"Hash::")) {result=host!bufferhash$execute(cfg,name);}
+found!elif(contains(name,"Etc::TextRaytracer")) {result=host!raytracer$execute(cfg,name);}
+found!elif(contains(name,"Etc::GameOfLife")) {result=host!life$execute(cfg,name);}
+found!elif(contains(name,"Base64::")) {result=host!base64bench$execute(cfg,name);}
+found!elif(contains(name,"Json::")) {result=host!jsonbench$execute(cfg,name);}
+found!elif(contains(name,"CSV::")) {result=host!csvbench$execute(cfg,name);}
+found:else() {host!fail("Unknown benchmark: "+name);}
+   nanos=nanos+result.nanos;failures=failures+result.failed;count=count+1;
+  }
+ }host!summary(Float(nanos)/Float(1000000000),count,failures);if(count==0) {host!fail("No benchmarks matched the filter");}if(failures>0) {host!exit(Int(1));}return Unit();
 }

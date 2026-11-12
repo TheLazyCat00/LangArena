@@ -2,21 +2,115 @@ package bufferhash;
 import core$;
 import math$;
 import arena$;
+type State = #struct {
+  data Buffer;
+  rng Rng;
+  result Int;
+  crc Bool;
+}
 
-type State = #struct {data Buffer;rng Rng;result Int;crc Bool;}
-State(cfg Config,name String) => init{data=buffer(cfg:integer(name,"size"),Int(0));rng=Rng();result=Int(0);crc=name=="Hash::CRC32";}
-Unit prepare(this State) mut {i Int=Int(1);i!to(this.data:size()) {value Int=this.rng!next(Int(256));this.data!set(i,value);}return Unit();}
-Int crc32(data Buffer) {crc Int=Int(4294967295);i Int=Int(1);i!to(data:size()) {crc=bitXor(crc,data:get(i));b Int=Int(1);b!to(Int(8)) {odd Bool=if(bitAnd(crc,Int(1))~=0) {crc=bitXor(shiftRightLogical(crc,Int(1)),Int(3988292384));}odd:else() {crc=shiftRightLogical(crc,Int(1));}}}return bitXor(crc,Int(4294967295));}
+State(cfg Config, name String) => init {
+  data=buffer(cfg:integer(name, "size"), Int(0));
+  rng=Rng();
+  result=Int(0);
+  crc=name=="Hash::CRC32";
+}
+
+Unit prepare(this State) mut {
+  i Int=Int(1);
+  i!to(this.data:size()) {
+    value Int=this.rng!next(Int(256));
+    this.data!set(i, value);
+  }
+  return Unit();
+}
+
+Int crc32(data Buffer) {
+  crc Int=Int(4294967295);
+  i Int=Int(1);
+  i!to(data:size()) {
+    crc=bitXor(crc, data:get(i));
+    b Int=Int(1);
+    b!to(Int(8)) {
+      odd Bool=if(bitAnd(crc, Int(1))~=0) {
+        crc=bitXor(shiftRightLogical(crc, Int(1)), Int(3988292384));
+      }
+      odd:else() {
+        crc=shiftRightLogical(crc, Int(1));
+      }
+    }
+  }
+  return bitXor(crc, Int(4294967295));
+}
+
 // This preserves the reference's custom hash, despite its SHA256 name.
-Int simpleSha(data Buffer) {hashes List<Int> = List(Int);hashes!push(Int(1779033703));hashes!push(Int(3144134277));hashes!push(Int(1013904242));hashes!push(Int(2773480762));hashes!push(Int(1359893119));hashes!push(Int(2600822924));hashes!push(Int(528734635));hashes!push(Int(1541459225));i Int=Int(1);i!to(data:size()) {index Int=rem(i-1,Int(8))+1;value Int=u32(hashes[index]*33+data:get(i));value=bitXor(u32(value+shiftLeft(value,Int(10))),shiftRightLogical(value,Int(6)));hashes[index]=value;}value Int=hashes[Int(1)];return bitAnd(shiftRightLogical(value,Int(24)),Int(255))+shiftLeft(bitAnd(shiftRightLogical(value,Int(16)),Int(255)),Int(8))+shiftLeft(bitAnd(shiftRightLogical(value,Int(8)),Int(255)),Int(16))+shiftLeft(bitAnd(value,Int(255)),Int(24));}
-Unit step(this State,iteration Int) mut {value Int=this.rng!next(Int(256));index Int=this.rng!next(this.data:size())+1;this.data!set(index,value);sum Int=Int(0);mode Bool=if(this.crc) {sum=crc32(this.data);}mode:else() {sum=simpleSha(this.data);}this.result=u32(this.result+sum);return Unit();}
-Int checksum(this State) => this.result;
-Unit resetRandom(this State) mut {this.rng!reset();return Unit();}
+Int simpleSha(data Buffer) {
+  hashes List<Int> = List(Int);
+  hashes!push(Int(1779033703));
+  hashes!push(Int(3144134277));
+  hashes!push(Int(1013904242));
+  hashes!push(Int(2773480762));
+  hashes!push(Int(1359893119));
+  hashes!push(Int(2600822924));
+  hashes!push(Int(528734635));
+  hashes!push(Int(1541459225));
+  i Int=Int(1);
+  i!to(data:size()) {
+    index Int=rem(i-1, Int(8))+1;
+    value Int=u32(hashes[index]*33+data:get(i));
+    value=bitXor(u32(value+shiftLeft(value, Int(10))), shiftRightLogical(value, Int(6)));
+    hashes[index]=value;
+  }
+  value Int=hashes[Int(1)];
+  return bitAnd(shiftRightLogical(value, Int(24)), Int(255))+shiftLeft(bitAnd(shiftRightLogical(value, Int(16)), Int(255)), Int(8))+shiftLeft(bitAnd(shiftRightLogical(value, Int(8)), Int(255)), Int(16))+shiftLeft(bitAnd(value, Int(255)), Int(24));
+}
 
-Result execute(this Host,cfg Config,name String) mut {
- state State=State(cfg,name);state!prepare();iterations Int=cfg:integer(name,"iterations");warm Int=max(Int(1),iterations/5);
- if(cfg:has(name,"warmup_iterations")) {warm=cfg:integer(name,"warmup_iterations");}
- i Int=Int(0);i!to(warm-1) {state!step(i);}state!resetRandom();started Int=this!start(name);
- j Int=Int(0);j!to(iterations-1) {state!step(j);}actual Int=u32(state:checksum());expected Int=u32(cfg:integer(name,"checksum"));
- nanos Int=this!finish(started,actual,expected);failed Int=Int(0);if(actual~=expected) {failed=Int(1);}return Result(nanos,failed);
+Unit step(this State, iteration Int) mut {
+  value Int=this.rng!next(Int(256));
+  index Int=this.rng!next(this.data:size())+1;
+  this.data!set(index, value);
+  sum Int=Int(0);
+  mode Bool=if(this.crc) {
+    sum=crc32(this.data);
+  }
+  mode:else() {
+    sum=simpleSha(this.data);
+  }
+  this.result=u32(this.result+sum);
+  return Unit();
+}
+
+Int checksum(this State) => this.result;
+Unit resetRandom(this State) mut {
+  this.rng!reset();
+  return Unit();
+}
+
+Result execute(this Host, cfg Config, name String) mut {
+  state State=State(cfg, name);
+  state!prepare();
+  iterations Int=cfg:integer(name, "iterations");
+  warm Int=max(Int(1), iterations/5);
+  if(cfg:has(name, "warmup_iterations")) {
+    warm=cfg:integer(name, "warmup_iterations");
+  }
+  i Int=Int(0);
+  i!to(warm-1) {
+    state!step(i);
+  }
+  state!resetRandom();
+  started Int=this!start(name);
+  j Int=Int(0);
+  j!to(iterations-1) {
+    state!step(j);
+  }
+  elapsed Int=this!stop(started);
+  actual Int=u32(state:checksum());
+  expected Int=u32(cfg:integer(name, "checksum"));
+  nanos Int=this!finish(elapsed, actual, expected);
+  failed Int=Int(0);
+  if(actual~=expected) {
+    failed=Int(1);
+  }
+  return Result(nanos, failed);
 }

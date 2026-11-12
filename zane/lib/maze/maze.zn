@@ -1,0 +1,318 @@
+package maze;
+import core$;
+import math$;
+import arena$;
+type Cell = struct {
+  kind Int;
+  neighbors List<Int>;
+}
+
+Cell(kind Int) => init {
+  kind;
+  neighbors=List(Int);
+}
+
+type State = #struct {
+  w Int;
+  h Int;
+  cells List<Cell>;
+  rng Rng;
+  result Int;
+  path List<Int>;
+  mode Int;
+}
+
+State(cfg Config, name String) => init {
+  w=cfg:integer(name, "w");
+  h=cfg:integer(name, "h");
+  cells=List(Cell);
+  rng=Rng();
+  result=Int(0);
+  path=List(Int);
+  mode=Int(0);
+}
+
+Int start(this State) => this.w+2;
+Int finish(this State) => (this.h-1)*this.w-1;
+Bool walkable(kind Int) => kind==1 or kind==2 or kind==3;
+Int adjacentOpen(this State, index Int) {
+  count Int=Int(0);
+  i Int=Int(1);
+  i!to(this.cells[index].neighbors:size()) {
+    if(walkable(this.cells[this.cells[index].neighbors[i]].kind)) {
+      count=count+1;
+    }
+  }
+  return count;
+}
+
+Unit dig(this State, index Int) mut {
+  stack List<Int> = List(Int);
+  copy Int=index;
+  stack!push(copy);
+  iteration Int=Int(1);
+  iteration!to(Int(9223372036854775807)) {
+    if(stack:size()==0) {
+      return Unit();
+    }
+    current Int=stack!remove(stack:size());
+    if(this:adjacentOpen(current)==1) {
+      this.cells[current].kind=Int(1);
+      i Int=Int(1);
+      i!to(Int(4)) {
+        neighbor Int=this.cells[current].neighbors[i];
+        if(this.cells[neighbor].kind==0) {
+          stack!push(neighbor);
+        }
+      }
+    }
+  }
+  return Unit();
+}
+
+Unit ensureFinish(this State, index Int) mut {
+  this.cells[index].kind=Int(1);
+  if(this:adjacentOpen(index)>1) {
+    return Unit();
+  }
+  i Int=Int(1);
+  i!to(Int(4)) {
+    neighbor Int=this.cells[index].neighbors[i];
+    if(this.cells[neighbor].kind==0) {
+      this!ensureFinish(neighbor);
+    }
+  }
+  return Unit();
+}
+
+Unit generate(this State) mut {
+  start Int=this:start();
+  finish Int=this:finish();
+  i Int=Int(1);
+  i!to(Int(4)) {
+    neighbor Int=this.cells[start].neighbors[i];
+    if(this.cells[neighbor].kind==0) {
+      this!dig(neighbor);
+    }
+  }
+  j Int=Int(1);
+  j!to(Int(4)) {
+    neighbor Int=this.cells[finish].neighbors[j];
+    if(this.cells[neighbor].kind==0) {
+      this!ensureFinish(neighbor);
+    }
+  }
+  return Unit();
+}
+
+Unit prepare(this State) mut {
+  i Int=Int(1);
+  i!to(this.w*this.h) {
+    this.cells!push(Cell(Int(0)));
+  }
+  this.cells[this:start()].kind=Int(2);
+  this.cells[this:finish()].kind=Int(3);
+  y Int=Int(0);
+  y!to(this.h-1) {
+    x Int=Int(0);
+    x!to(this.w-1) {
+      index Int=y*this.w+x+1;
+      interior Bool=if(x>0 and y>0 and x<this.w-1 and y<this.h-1) {
+        this.cells[index].neighbors!push(index-this.w);
+        this.cells[index].neighbors!push(index+this.w);
+        this.cells[index].neighbors!push(index+1);
+        this.cells[index].neighbors!push(index-1);
+        j Int=Int(1);
+        j!to(Int(4)) {
+          a Int=this.rng!next(Int(4))+1;
+          b Int=this.rng!next(Int(4))+1;
+          old Int=this.cells[index].neighbors[a];
+          this.cells[index].neighbors[a]=this.cells[index].neighbors[b];
+          this.cells[index].neighbors[b]=old;
+        }
+      }
+      interior:else() {
+        this.cells[index].kind=Int(4);
+      }
+    }
+  }
+  if(this.mode~=0) {
+    this!generate();
+  }
+  return Unit();
+}
+
+List<Int> reconstruct(previous List<Int>, current Int) {
+  reverse List<Int> = List(Int);
+  at Int=current;
+  i Int=Int(1);
+  i!to(previous:size()) {
+    if(at>0) {
+      reverse!push(at);
+      at=previous[at];
+    }
+  }
+  out List<Int> = List(Int);
+  j Int=Int(1);
+  j!to(reverse:size()) {
+    out!push(reverse[reverse:size()-j+1]);
+  }
+  return out;
+}
+
+List<Int> bfs(this State) {
+  n Int=this.cells:size();
+  previous List<Int> = filled(n, Int(0));
+  visited List<Bool> = filled(n, Bool(false));
+  queue List<Int> = List(Int);
+  queue!push(this:start());
+  visited[this:start()]=Bool(true);
+  read Int=Int(1);
+  iteration Int=Int(1);
+  iteration!to(n) {
+    if(read<=queue:size()) {
+      current Int=queue[read];
+      read=read+1;
+      j Int=Int(1);
+      j!to(this.cells[current].neighbors:size()) {
+        neighbor Int=this.cells[current].neighbors[j];
+        if(neighbor==this:finish()) {
+          previous[neighbor]=current;
+          return reconstruct(previous, neighbor);
+        }
+        if(walkable(this.cells[neighbor].kind) and ~visited[neighbor]) {
+          visited[neighbor]=Bool(true);
+          previous[neighbor]=current;
+          queue!push(neighbor);
+        }
+      }
+    }
+  }
+  return List(Int);
+}
+
+Int heuristic(this State, index Int) => abs(rem(index-1, this.w)-(this.w-2))+abs((index-1)/this.w-(this.h-2));
+List<Int> astar(this State) {
+  n Int=this.cells:size();
+  previous List<Int> = filled(n, Int(0));
+  score List<Int> = filled(n, Int(2147483647));
+  best List<Int> = filled(n, Int(2147483647));
+  start Int=this:start();
+  target Int=this:finish();
+  score[start]=Int(0);
+  best[start]=this:heuristic(start);
+  open Heap=Heap();
+  open!push(start, best[start]);
+  iteration Int=Int(1);
+  iteration!to(Int(9223372036854775807)) {
+    if(open.heapSize==0) {
+      return List(Int);
+    }
+    entry Entry=open!pop();
+    current Int=entry.vertex;
+    if(current==target) {
+      return reconstruct(previous, current);
+    }
+    j Int=Int(1);
+    j!to(this.cells[current].neighbors:size()) {
+      neighbor Int=this.cells[current].neighbors[j];
+      if(walkable(this.cells[neighbor].kind)) {
+        tentative Int=score[current]+1;
+        if(tentative<score[neighbor]) {
+          previous[neighbor]=current;
+          score[neighbor]=tentative;
+          priority Int=tentative+this:heuristic(neighbor);
+          if(priority<best[neighbor]) {
+            best[neighbor]=priority;
+            open!push(neighbor, priority);
+          }
+        }
+      }
+    }
+  }
+  return List(Int);
+}
+
+Unit step(this State, iteration Int) mut {
+  mode Int=this.mode;
+  generator Bool=if(mode==0) {
+    i Int=Int(1);
+    i!to(this.cells:size()) {
+      if(this.cells[i].kind==1) {
+        this.cells[i].kind=Int(0);
+      }
+    }
+    this.cells[this:start()].kind=Int(2);
+    this.cells[this:finish()].kind=Int(3);
+    this!generate();
+    this.result=u32(this.result+this.cells[this.h/2*this.w+this.w/2+1].kind);
+  }
+  generator:else() {
+    bfs Bool=if(mode==1) {
+      this.path=this:bfs();
+    }
+    bfs:else() {
+      this.path=this:astar();
+    }
+    this.result=u32(this.result+this.path:size());
+  }
+  return Unit();
+}
+
+Int checksum(this State) {
+  if(this.mode==0) {
+    fnv Int=Int(2166136261);
+    i Int=Int(1);
+    i!to(this.cells:size()) {
+      if(this.cells[i].kind==1) {
+        x Int=rem(i-1, this.w);
+        y Int=(i-1)/this.w;
+        fnv=u32(bitXor(fnv, x*y)*16777619);
+      }
+    }
+    return u32(this.result+fnv);
+  }
+  index Int=this.path[this.path:size()/2+1];
+  x Int=rem(index-1, this.w);
+  y Int=(index-1)/this.w;
+  return u32(this.result+x*y);
+}
+
+Unit resetRandom(this State) mut {
+  return Unit();
+}
+
+Result execute(this Host, cfg Config, name String) mut {
+  state State=State(cfg, name);
+  if(name=="Maze::BFS") {
+    state.mode=Int(1);
+  }
+  if(name=="Maze::AStar") {
+    state.mode=Int(2);
+  }
+  state!prepare();
+  iterations Int=cfg:integer(name, "iterations");
+  warm Int=max(Int(1), iterations/5);
+  if(cfg:has(name, "warmup_iterations")) {
+    warm=cfg:integer(name, "warmup_iterations");
+  }
+  i Int=Int(0);
+  i!to(warm-1) {
+    state!step(i);
+  }
+  state!resetRandom();
+  started Int=this!start(name);
+  j Int=Int(0);
+  j!to(iterations-1) {
+    state!step(j);
+  }
+  elapsed Int=this!stop(started);
+  actual Int=u32(state:checksum());
+  expected Int=u32(cfg:integer(name, "checksum"));
+  nanos Int=this!finish(elapsed, actual, expected);
+  failed Int=Int(0);
+  if(actual~=expected) {
+    failed=Int(1);
+  }
+  return Result(nanos, failed);
+}

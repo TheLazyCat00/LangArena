@@ -23,6 +23,19 @@ services:
     build:
       dockerfile: docker/base
 
+  zane:
+    <<: *shared
+    image: langarena:zane
+    working_dir: /src/zane
+    build:
+      dockerfile: docker/zane
+    volumes:
+      - .:/src
+      - ./cache/deps/zane/packages:/opt/zane-home/packages
+      - ./cache/build/zane/out:/src/zane/out
+    depends_on:
+      - base
+
   crystal:
     <<: *shared
     image: langarena:crystal

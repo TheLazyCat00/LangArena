@@ -1,16 +1,133 @@
 package arena;
 import core$;
 import math$;
-type IntMap = struct {keys List<Int>;values List<Int>;used List<Bool>;entries Int;}
-IntMap(capacity Int) => init{keys=filled(capacity,Int(0));values=filled(capacity,Int(0));used=filled(capacity,Bool(false));entries=Int(0);}
-Int slot(this IntMap,key Int) {capacity Int=this.keys:size();index Int=rem(u32(key*2654435761),capacity)+1;probe Int=Int(1);probe!to(capacity) {if(~this.used[index]) {return index;}if(this.keys[index]==key) {return index;}index=rem(index,capacity)+1;}return Int(0);}
-Int get(this IntMap,key Int) {index Int=this:slot(key);if(index==0) {return Int(0);}if(this.used[index]) {return this.values[index];}return Int(0);}
-Bool has(this IntMap,key Int) {index Int=this:slot(key);if(index==0) {return Bool(false);}return this.used[index];}
-Unit put(this IntMap,key Int,value Int) mut {index Int=this:slot(key);if(index>0) {if(~this.used[index]) {this.entries=this.entries+1;}this.used[index]=Bool(true);this.keys[index]=key;this.values[index]=value;}return Unit();}
-type StringMap = struct {keys List<String>;values List<Int>;used List<Bool>;entries Int;}
-StringMap(capacity Int) {keys List<String> = List(String);i Int=Int(1);i!to(capacity) {keys!push(String(""));}return init{keys;values=filled(capacity,Int(0));used=filled(capacity,Bool(false));entries=Int(0);}
+type IntMap = struct {
+  keys List<Int>;
+  values List<Int>;
+  used List<Bool>;
+  entries Int;
 }
-Int slot(this StringMap,key String) {capacity Int=this.keys:size();index Int=rem(hash(key),capacity)+1;probe Int=Int(1);probe!to(capacity) {if(~this.used[index]) {return index;}if(this.keys[index]==key) {return index;}index=rem(index,capacity)+1;}return Int(0);}
-Int get(this StringMap,key String) {index Int=this:slot(key);if(index==0) {return Int(0);}if(this.used[index]) {return this.values[index];}return Int(0);}
-Bool has(this StringMap,key String) {index Int=this:slot(key);if(index==0) {return Bool(false);}return this.used[index];}
-Unit put(this StringMap,key String,value Int) mut {index Int=this:slot(key);if(index>0) {if(~this.used[index]) {this.entries=this.entries+1;}this.used[index]=Bool(true);this.keys[index]=key;this.values[index]=value;}return Unit();}
+
+IntMap(capacity Int) => init {
+  keys=filled(capacity, Int(0));
+  values=filled(capacity, Int(0));
+  used=filled(capacity, Bool(false));
+  entries=Int(0);
+}
+
+Int slot(this IntMap, key Int) {
+  capacity Int=this.keys:size();
+  index Int=rem(u32(key*2654435761), capacity)+1;
+  probe Int=Int(1);
+  probe!to(capacity) {
+    if(~this.used[index]) {
+      return index;
+    }
+    if(this.keys[index]==key) {
+      return index;
+    }
+    index=rem(index, capacity)+1;
+  }
+  return Int(0);
+}
+
+Int get(this IntMap, key Int) {
+  index Int=this:slot(key);
+  if(index==0) {
+    return Int(0);
+  }
+  if(this.used[index]) {
+    return this.values[index];
+  }
+  return Int(0);
+}
+
+Bool has(this IntMap, key Int) {
+  index Int=this:slot(key);
+  if(index==0) {
+    return Bool(false);
+  }
+  return this.used[index];
+}
+
+Unit put(this IntMap, key Int, value Int) mut {
+  index Int=this:slot(key);
+  if(index>0) {
+    if(~this.used[index]) {
+      this.entries=this.entries+1;
+    }
+    this.used[index]=Bool(true);
+    this.keys[index]=key;
+    this.values[index]=value;
+  }
+  return Unit();
+}
+
+type StringMap = struct {
+  keys List<String>;
+  values List<Int>;
+  used List<Bool>;
+  entries Int;
+}
+
+StringMap(capacity Int) {
+  keys List<String> = List(String);
+  i Int=Int(1);
+  i!to(capacity) {
+    keys!push(String(""));
+  }
+  return init {
+    keys;
+    values=filled(capacity, Int(0));
+    used=filled(capacity, Bool(false));
+    entries=Int(0);
+  }
+}
+
+Int slot(this StringMap, key String) {
+  capacity Int=this.keys:size();
+  index Int=rem(hash(key), capacity)+1;
+  probe Int=Int(1);
+  probe!to(capacity) {
+    if(~this.used[index]) {
+      return index;
+    }
+    if(this.keys[index]==key) {
+      return index;
+    }
+    index=rem(index, capacity)+1;
+  }
+  return Int(0);
+}
+
+Int get(this StringMap, key String) {
+  index Int=this:slot(key);
+  if(index==0) {
+    return Int(0);
+  }
+  if(this.used[index]) {
+    return this.values[index];
+  }
+  return Int(0);
+}
+
+Bool has(this StringMap, key String) {
+  index Int=this:slot(key);
+  if(index==0) {
+    return Bool(false);
+  }
+  return this.used[index];
+}
+
+Unit put(this StringMap, key String, value Int) mut {
+  index Int=this:slot(key);
+  if(index>0) {
+    if(~this.used[index]) {
+      this.entries=this.entries+1;
+    }
+    this.used[index]=Bool(true);
+    this.keys[index]=key;
+    this.values[index]=value;
+  }
+  return Unit();
+}

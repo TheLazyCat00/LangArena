@@ -1,0 +1,216 @@
+package graph;
+import core$;
+import math$;
+import arena$;
+type State = #struct {
+  vertices Int;
+  jumps Int;
+  jumpLength Int;
+  adj List<List<Int>>;
+  rng Rng;
+  result Int;
+  mode Int;
+}
+
+State(cfg Config, name String) => init {
+  vertices=cfg:integer(name, "vertices");
+  jumps=cfg:integer(name, "jumps");
+  jumpLength=cfg:integer(name, "jump_len");
+  adj=List(List<Int>);
+  rng=Rng();
+  result=Int(0);
+  mode=Int(0);
+}
+
+Unit edge(this State, a Int, b Int) mut {
+  left Int=a;
+  right Int=b;
+  this.adj[left]!push(right);
+  this.adj[right]!push(left);
+  return Unit();
+}
+
+Unit prepare(this State) mut {
+  vertices Int=this.vertices;
+  i Int=Int(1);
+  i!to(vertices) {
+    this.adj!push(List(Int));
+  }
+  j Int=Int(2);
+  j!to(vertices) {
+    this!edge(j, j-1);
+  }
+  v Int=Int(1);
+  v!to(vertices) {
+    count Int=this.rng!next(this.jumps);
+    k Int=Int(1);
+    k!to(count) {
+      offset Int=this.rng!next(this.jumpLength)-this.jumpLength/2;
+      u Int=v+offset;
+      if(u>=1 and u<=vertices and u~=v) {
+        this!edge(v, u);
+      }
+    }
+  }
+  return Unit();
+}
+
+type Visit = struct {
+  vertex Int;
+  distance Int;
+}
+
+Visit(vertex Int, distance Int) => init {
+  vertex;
+  distance;
+}
+
+Int bfs(this State) {
+  visited List<Bool> = filled(this.vertices, Bool(false));
+  queue List<Visit> = List(Visit);
+  queue!push(Visit(Int(1), Int(0)));
+  visited[Int(1)]=Bool(true);
+  read Int=Int(1);
+  iteration Int=Int(1);
+  iteration!to(this.vertices) {
+    if(read>queue:size()) {
+      return ~Int(1);
+    }
+    visit Visit=queue[read];
+    read=read+1;
+    j Int=Int(1);
+    j!to(this.adj[visit.vertex]:size()) {
+      neighbor Int=this.adj[visit.vertex][j];
+      if(neighbor==this.vertices) {
+        return visit.distance+1;
+      }
+      if(~visited[neighbor]) {
+        visited[neighbor]=Bool(true);
+        queue!push(Visit(neighbor, visit.distance+1));
+      }
+    }
+  }
+  return ~Int(1);
+}
+
+Int dfs(this State) {
+  visited List<Bool> = filled(this.vertices, Bool(false));
+  stack List<Visit> = List(Visit);
+  stack!push(Visit(Int(1), Int(0)));
+  best Int=Int(2147483647);
+  iteration Int=Int(1);
+  iteration!to(Int(9223372036854775807)) {
+    if(stack:size()==0) {
+      if(best==2147483647) {
+        return ~Int(1);
+      }
+      return best;
+    }
+    visit Visit=stack!remove(stack:size());
+    if(~visited[visit.vertex] and visit.distance<best) {
+      visited[visit.vertex]=Bool(true);
+      j Int=Int(1);
+      j!to(this.adj[visit.vertex]:size()) {
+        neighbor Int=this.adj[visit.vertex][j];
+        target Bool=if(neighbor==this.vertices) {
+          best=min(best, visit.distance+1);
+        }
+        target:else() {
+          if(~visited[neighbor]) {
+            stack!push(Visit(neighbor, visit.distance+1));
+          }
+        }
+      }
+    }
+  }
+  return best;
+}
+
+Int astar(this State) {
+  score List<Int> = filled(this.vertices, Int(2147483647));
+  best List<Int> = filled(this.vertices, Int(2147483647));
+  score[Int(1)]=Int(0);
+  best[Int(1)]=this.vertices-1;
+  open Heap=Heap();
+  open!push(Int(1), this.vertices-1);
+  iteration Int=Int(1);
+  iteration!to(Int(9223372036854775807)) {
+    if(open.heapSize==0) {
+      return ~Int(1);
+    }
+    entry Entry=open!pop();
+    current Int=entry.vertex;
+    if(current==this.vertices) {
+      return score[current];
+    }
+    j Int=Int(1);
+    j!to(this.adj[current]:size()) {
+      neighbor Int=this.adj[current][j];
+      tentative Int=score[current]+1;
+      if(tentative<score[neighbor]) {
+        score[neighbor]=tentative;
+        priority Int=tentative+this.vertices-neighbor;
+        if(priority<best[neighbor]) {
+          best[neighbor]=priority;
+          open!push(neighbor, priority);
+        }
+      }
+    }
+  }
+  return ~Int(1);
+}
+
+Unit step(this State, iteration Int) mut {
+  value Int=Int(0);
+  mode Bool=if(this.mode==0) {
+    value=this:bfs();
+  }
+  mode!elif(this.mode==1) {
+    value=this:dfs();
+  }
+  mode:else() {
+    value=this:astar();
+  }
+  this.result=u32(this.result+value);
+  return Unit();
+}
+
+Int checksum(this State) => this.result;
+Unit resetRandom(this State) mut {
+  return Unit();
+}
+
+Result execute(this Host, cfg Config, name String) mut {
+  state State=State(cfg, name);
+  if(name=="Graph::DFS") {
+    state.mode=Int(1);
+  }
+  if(name=="Graph::AStar") {
+    state.mode=Int(2);
+  }
+  state!prepare();
+  iterations Int=cfg:integer(name, "iterations");
+  warm Int=max(Int(1), iterations/5);
+  if(cfg:has(name, "warmup_iterations")) {
+    warm=cfg:integer(name, "warmup_iterations");
+  }
+  i Int=Int(0);
+  i!to(warm-1) {
+    state!step(i);
+  }
+  state!resetRandom();
+  started Int=this!start(name);
+  j Int=Int(0);
+  j!to(iterations-1) {
+    state!step(j);
+  }
+  elapsed Int=this!stop(started);
+  actual Int=u32(state:checksum());
+  expected Int=u32(cfg:integer(name, "checksum"));
+  nanos Int=this!finish(elapsed, actual, expected);
+  failed Int=Int(0);
+  if(actual~=expected) {
+    failed=Int(1);
+  }
+  return Result(nanos, failed);
+}

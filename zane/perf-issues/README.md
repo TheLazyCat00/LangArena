@@ -63,6 +63,24 @@ runtime asks for. Repros build with `zane build` in their directory.
 - **Fix direction.** Move, don't copy, a value whose source is a fresh
   temporary: a constructor argument that is a call result, and a returned local.
 - **Repro.** [`repros/string-copy`](repros/string-copy): `out/host/repro 1000000 100`.
+- **Fixed** in [zane-lang/compiler#364](https://github.com/zane-lang/compiler/pull/364)
+  (`2ccc514`), in the compiler only. A fresh argument now moves into a value
+  parameter that the callee copies once, through a local `<symbol>.taken` copy
+  when the callee is another package's. A returned local is moved out of its
+  slot. With nothing held, the result is made in its final region, so the
+  promote goes too. Callgrind instructions and minor page faults, compiler
+  v0.32 → #364, with all 50 checksums OK:
+
+  | Program | Instructions before | after | Faults before | after |
+  | --- | ---: | ---: | ---: | ---: |
+  | `repros/string-copy 1000000 100` | 300.6M | 100.5M (the `memset` alone) | 1,033 | 546 |
+  | Base64::Encode | 9.65G | 1.65G | 1,584 | 1,308 |
+  | Base64::Decode | 6.74G | 1.93G | 1,511 | 1,392 |
+  | Etc::CacheSimulation | 31.6G | 17.3G | 602 | 588 |
+  | Compress::LZWEncode | 49.8G | 26.8G | 161,614 | 1,532 |
+  | Compress::LZWDecode | 34.7G | 16.4G | 14,911 | 6,493 |
+  | Template::Regex | 33.5G | 18.6G | 113,579 | 21,247 |
+  | Template::Parse | 27.7G | 18.2G | 19,961 | 14,239 |
 
 ### R2. A push loop costs 13.4 instructions per element
 
@@ -172,6 +190,9 @@ The copy half of R1 lives in core: the constructor could take ownership when
 its argument is a fresh foreign result. Whether that belongs in core or in the
 compiler's move rule is the maintainer's call; it is listed under R1 as one
 mechanism.
+
+**Fixed** with R1 in the compiler (zane-lang/compiler#364). Core is unchanged:
+the constructor's copy is moved away where its argument is fresh.
 
 ### B3. No condition-tested loop
 

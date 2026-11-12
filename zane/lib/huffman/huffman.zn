@@ -1,0 +1,266 @@
+package huffman;
+import core$;
+import math$;
+import arena$;
+import codec$;
+type Node = struct {
+  frequency Int;
+  value Int;
+  left Int;
+  right Int;
+}
+
+Node(frequency Int, value Int, left Int, right Int) => init {
+  frequency;
+  value;
+  left;
+  right;
+}
+
+type Tree = #struct {
+  nodes List<Node>;
+  queue List<Int>;
+  root Int;
+  lengths List<Int>;
+  codes List<Int>;
+}
+
+Tree() => init {
+  nodes=List(Node);
+  queue=List(Int);
+  root=Int(0);
+  lengths=filled(Int(256), Int(0));
+  codes=filled(Int(256), Int(0));
+}
+
+Int position(this Tree, frequency Int, strict Bool) {
+  low Int=Int(1);
+  high Int=this.queue:size()+1;
+  k Int=Int(1);
+  k!to(this.queue:size()+1) {
+    if(low>=high) {
+      return low;
+    }
+    mid Int=(low+high)/2;
+    value Int=this.nodes[this.queue[mid]].frequency;
+    less Bool=value<frequency;
+    if(strict) {
+      less=value<=frequency;
+    }
+    branch Bool=if(less) {
+      low=mid+1;
+    }
+    branch:else() {
+      high=mid;
+    }
+  }
+  return low;
+}
+
+Unit insert(this Tree, node Int, strict Bool) mut {
+  frequency Int=this.nodes[node].frequency;
+  position Int=this:position(frequency, strict);
+  copy Int=node;
+  this.queue!push(copy);
+  i Int=this.queue:size();
+  k Int=Int(1);
+  k!to(this.queue:size()-position) {
+    this.queue[i]=this.queue[i-1];
+    i=i-1;
+  }
+  this.queue[position]=node;
+  return Unit();
+}
+
+Unit build(this Tree, frequencies List<Int>) mut {
+  i Int=Int(1);
+  i!to(Int(256)) {
+    if(frequencies[i]>0) {
+      this.nodes!push(Node(frequencies[i], i-1, Int(0), Int(0)));
+      index Int=this.nodes:size();
+      this!insert(index, Bool(true));
+    }
+  }
+  if(this.queue:size()==1) {
+    left Int=this.queue[Int(1)];
+    this.nodes!push(Node(Int(0), Int(0), Int(0), Int(0)));
+    right Int=this.nodes:size();
+    this.nodes!push(Node(this.nodes[left].frequency, Int(0), left, right));
+    this.root=this.nodes:size();
+    return Unit();
+  }
+  bound Int=this.queue:size();
+  j Int=Int(1);
+  j!to(bound-1) {
+    left Int=this.queue!remove(Int(1));
+    right Int=this.queue!remove(Int(1));
+    frequency Int=this.nodes[left].frequency+this.nodes[right].frequency;
+    this.nodes!push(Node(frequency, Int(0), left, right));
+    parent Int=this.nodes:size();
+    this!insert(parent, Bool(false));
+  }
+  if(this.queue:size()>0) {
+    this.root=this.queue[Int(1)];
+  }
+  return Unit();
+}
+
+Unit codes(this Tree, index Int, code Int, length Int) mut {
+  node Node=this.nodes[index];
+  leaf Bool=if(node.left==0 and node.right==0) {
+    if(length>0 or node.value~=0) {
+      this.lengths[node.value+1]=length;
+      this.codes[node.value+1]=code;
+    }
+  }
+  leaf:else() {
+    if(node.left>0) {
+      this!codes(node.left, code*2, length+1);
+    }
+    if(node.right>0) {
+      this!codes(node.right, code*2+1, length+1);
+    }
+  }
+  return Unit();
+}
+
+type Encoded = struct {
+  data String;
+  bits Int;
+  frequencies List<Int>;
+}
+
+Encoded(data String, bits Int, frequencies List<Int>) => init {
+  data;
+  bits;
+  frequencies;
+}
+
+Encoded encode(input String) {
+  inputBytes Buffer=bytes(input);
+  freq List<Int> = frequencies(input);
+  if(length(input)==0) {
+    return Encoded(String(""), Int(0), freq);
+  }
+  tree Tree=Tree();
+  tree!build(freq);
+  root Int=tree.root;
+  tree!codes(root, Int(0), Int(0));
+  out BitWriter=BitWriter();
+  i Int=Int(1);
+  i!to(length(input)) {
+    value Int=byte(inputBytes, i)+1;
+    codeLength Int=tree.lengths[value];
+    j Int=Int(1);
+    j!to(codeLength) {
+      bit Int=bitAnd(shiftRightLogical(tree.codes[value], codeLength-j), Int(1));
+      out!bit(bit);
+    }
+  }
+  text String=out!flush();
+  return Encoded(text, out.written, freq);
+}
+
+String decode(encoded Encoded) {
+  if(encoded.bits==0) {
+    return String("");
+  }
+  tree Tree=Tree();
+  tree!build(encoded.frequencies);
+  current Int=tree.root;
+  reader BitReader=BitReader(encoded.data);
+  out Buffer=buffer(Int(0), Int(0));
+  i Int=Int(1);
+  i!to(encoded.bits) {
+    bit Int=reader!bit();
+    branch Bool=if(bit==0) {
+      current=tree.nodes[current].left;
+    }
+    branch:else() {
+      current=tree.nodes[current].right;
+    }
+    if(tree.nodes[current].left==0 and tree.nodes[current].right==0) {
+      out!push(tree.nodes[current].value);
+      current=tree.root;
+    }
+  }
+  return out:string();
+}
+
+type State = #struct {
+  n Int;
+  data String;
+  encoded Encoded;
+  decoded String;
+  result Int;
+  decode Bool;
+}
+
+State(cfg Config, name String) => init {
+  n=cfg:integer(name, "size");
+  data=String("");
+  encoded=Encoded(String(""), Int(0), List(Int));
+  decoded=String("");
+  result=Int(0);
+  decode=name=="Compress::HuffDecode";
+}
+
+Unit prepare(this State) mut {
+  this.data=testData(this.n);
+  if(this.decode) {
+    this.encoded=encode(this.data);
+  }
+  return Unit();
+}
+
+Unit step(this State, iteration Int) mut {
+  mode Bool=if(this.decode) {
+    this.decoded=decode(this.encoded);
+    this.result=u32(this.result+length(this.decoded));
+  }
+  mode:else() {
+    this.encoded=encode(this.data);
+    this.result=u32(this.result+length(this.encoded.data));
+  }
+  return Unit();
+}
+
+Int checksum(this State) {
+  if(this.decode and this.decoded==this.data) {
+    return u32(this.result+100000);
+  }
+  return this.result;
+}
+
+Unit resetRandom(this State) mut {
+  return Unit();
+}
+
+Result execute(this Host, cfg Config, name String) mut {
+  state State=State(cfg, name);
+  state!prepare();
+  iterations Int=cfg:integer(name, "iterations");
+  warm Int=max(Int(1), iterations/5);
+  if(cfg:has(name, "warmup_iterations")) {
+    warm=cfg:integer(name, "warmup_iterations");
+  }
+  i Int=Int(0);
+  i!to(warm-1) {
+    state!step(i);
+  }
+  state!resetRandom();
+  started Int=this!start(name);
+  j Int=Int(0);
+  j!to(iterations-1) {
+    state!step(j);
+  }
+  elapsed Int=this!stop(started);
+  actual Int=u32(state:checksum());
+  expected Int=u32(cfg:integer(name, "checksum"));
+  nanos Int=this!finish(elapsed, actual, expected);
+  failed Int=Int(0);
+  if(actual~=expected) {
+    failed=Int(1);
+  }
+  return Result(nanos, failed);
+}

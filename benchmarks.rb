@@ -51,6 +51,7 @@ RECOMPILE_MARKER_FILES = {}
 
 LANG_MASKS = {
   'c' => ['./c', ['.c', '.h'], ['target', 'deps']],
+  'zane' => ['./zane', ['.zn', '.c', '.h', '.coda'], ['out', 'vendor']],
   'c3' => ['./c3', ['.c3'], ['build']],
   'cpp' => ['./cpp', ['.cpp', '.hpp', '.h', '.cc', '.cxx'], ['target', 'deps']],
   'golang' => ['./golang', ['.go'], ['target', 'warmup']],
@@ -255,6 +256,18 @@ class Run
 end
 
 RUNS = [
+  Run.new(
+    name: "Zane",
+    build_cmd: "zane build",
+    binary_name: "./out/host/zane",
+    run_cmd: "./out/host/zane",
+    version_cmd: "zane version; head -n 1 zane.coda",
+    dir: "/src/zane",
+    container: "zane",
+    group: :prod,
+    deps_cmd: "zane fetch",
+  ),
+
 
   # ======================================= C ======================================================  
   Run.new(
@@ -2616,6 +2629,13 @@ end
 
 if IS_RUN_PROD
   RUNS.select! { |run| run.group == :prod }
+end
+
+# Select exactly one run by its full name, unlike the substring regex above
+# ("Rust" also matches "Rust/WASM/Node"). Results are still written.
+if (only = ENV["RUN_NAME"]) && only != ""
+  RUNS.select! { |run| run.name == only }
+  raise "No run named #{only.inspect}" if RUNS.empty?
 end
 
 if IS_ONE_RUN_PER_LANG

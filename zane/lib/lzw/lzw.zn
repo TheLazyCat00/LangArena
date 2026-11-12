@@ -1,0 +1,166 @@
+package lzw;
+import core$;
+import math$;
+import arena$;
+import codec$;
+type Encoded = struct {
+  data String;
+}
+
+Encoded(data String) => init {
+  data;
+}
+
+Encoded encode(input String) {
+  inputBytes Buffer=bytes(input);
+  if(length(input)==0) {
+    return Encoded(String(""));
+  }
+  dict StringMap=StringMap(length(input)*2+1024);
+  i Int=Int(0);
+  i!to(Int(255)) {
+    dict!put(character(i), i);
+  }
+  next Int=Int(256);
+  out Buffer=buffer(Int(0), Int(0));
+  current String=character(byte(inputBytes, Int(1)));
+  j Int=Int(2);
+  j!to(length(input)) {
+    nextChar String=character(byte(inputBytes, j));
+    combined String=current+nextChar;
+    found Bool=if(dict:has(combined)) {
+      current=combined;
+    }
+    found:else() {
+      code Int=dict:get(current);
+      out!push(shiftRightLogical(code, Int(8)));
+      out!push(bitAnd(code, Int(255)));
+      if(next<65536) {
+        dict!put(combined, next);
+        next=next+1;
+      }
+      current=nextChar;
+    }
+  }
+  code Int=dict:get(current);
+  out!push(shiftRightLogical(code, Int(8)));
+  out!push(bitAnd(code, Int(255)));
+  return Encoded(out:string());
+}
+
+String decode(encoded Encoded) {
+  input String=encoded.data;
+  inputBytes Buffer=bytes(input);
+  if(length(input)==0) {
+    return String("");
+  }
+  dict List<String> = List(String);
+  i Int=Int(0);
+  i!to(Int(255)) {
+    dict!push(character(i));
+  }
+  code Int=byte(inputBytes, Int(1))*256+byte(inputBytes, Int(2));
+  old String=dict[code+1];
+  out Buffer=buffer(Int(0), Int(0));
+  out!append(old);
+  position Int=Int(3);
+  j Int=Int(1);
+  j!to(length(input)/2-1) {
+    next Int=byte(inputBytes, position)*256+byte(inputBytes, position+1);
+    position=position+2;
+    value String=String("");
+    known Bool=if(next<dict:size()) {
+      value=dict[next+1];
+    }
+    known:else() {
+      if(next~=dict:size()) {
+        return String("");
+      }
+      value=old+character(byte(old, Int(1)));
+    }
+    out!append(value);
+    if(dict:size()<65536) {
+      dict!push(old+character(byte(value, Int(1))));
+    }
+    old=value;
+  }
+  return out:string();
+}
+
+type State = #struct {
+  n Int;
+  data String;
+  encoded Encoded;
+  decoded String;
+  result Int;
+  decode Bool;
+}
+
+State(cfg Config, name String) => init {
+  n=cfg:integer(name, "size");
+  data=String("");
+  encoded=Encoded(String(""));
+  decoded=String("");
+  result=Int(0);
+  decode=name=="Compress::LZWDecode";
+}
+
+Unit prepare(this State) mut {
+  this.data=testData(this.n);
+  if(this.decode) {
+    this.encoded=encode(this.data);
+  }
+  return Unit();
+}
+
+Unit step(this State, iteration Int) mut {
+  mode Bool=if(this.decode) {
+    this.decoded=decode(this.encoded);
+    this.result=u32(this.result+length(this.decoded));
+  }
+  mode:else() {
+    this.encoded=encode(this.data);
+    this.result=u32(this.result+length(this.encoded.data));
+  }
+  return Unit();
+}
+
+Int checksum(this State) {
+  if(this.decode and this.decoded==this.data) {
+    return u32(this.result+100000);
+  }
+  return this.result;
+}
+
+Unit resetRandom(this State) mut {
+  return Unit();
+}
+
+Result execute(this Host, cfg Config, name String) mut {
+  state State=State(cfg, name);
+  state!prepare();
+  iterations Int=cfg:integer(name, "iterations");
+  warm Int=max(Int(1), iterations/5);
+  if(cfg:has(name, "warmup_iterations")) {
+    warm=cfg:integer(name, "warmup_iterations");
+  }
+  i Int=Int(0);
+  i!to(warm-1) {
+    state!step(i);
+  }
+  state!resetRandom();
+  started Int=this!start(name);
+  j Int=Int(0);
+  j!to(iterations-1) {
+    state!step(j);
+  }
+  elapsed Int=this!stop(started);
+  actual Int=u32(state:checksum());
+  expected Int=u32(cfg:integer(name, "checksum"));
+  nanos Int=this!finish(elapsed, actual, expected);
+  failed Int=Int(0);
+  if(actual~=expected) {
+    failed=Int(1);
+  }
+  return Result(nanos, failed);
+}

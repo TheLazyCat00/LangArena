@@ -1,0 +1,328 @@
+package matmul;
+import core$;
+import math$;
+import arena$;
+type Matrix = struct {
+  rows List<List<Float>>;
+}
+
+Matrix(n Int) {
+  rows List<List<Float>> = List(List<Float>);
+  tmp Float=Float(1.0)/Float(n)/Float(n);
+  i Int=Int(0);
+  i!to(n-1) {
+    row List<Float> = List(Float);
+    j Int=Int(0);
+    j!to(n-1) {
+      row!push(tmp*Float(i-j)*Float(i+j));
+    }
+    rows!push(row);
+  }
+  return init {
+    rows;
+  }
+}
+
+type State = #struct {
+  a Matrix;
+  b Matrix;
+  result Int;
+  threads Int;
+}
+
+State(cfg Config, name String) => init {
+  a=Matrix(cfg:integer(name, "n"));
+  b=Matrix(cfg:integer(name, "n"));
+  result=Int(0);
+  threads=Int(1);
+}
+
+Unit prepare(this State) mut {
+  return Unit();
+}
+
+List<List<Float>> transpose(b Matrix) {
+  rows List<List<Float>> = List(List<Float>);
+  i Int=Int(1);
+  i!to(b.rows:size()) {
+    row List<Float> = List(Float);
+    j Int=Int(1);
+    j!to(b.rows:size()) {
+      row!push(b.rows[j][i]);
+    }
+    rows!push(row);
+  }
+  return rows;
+}
+
+List<List<Float>> multiplyRows(a Matrix, t List<List<Float>>, start Int, end Int) {
+  out List<List<Float>> = List(List<Float>);
+  i Int=start;
+  i!to(end) {
+    row List<Float> = List(Float);
+    j Int=Int(1);
+    j!to(t:size()) {
+      value Float=Float(0.0);
+      k Int=Int(1);
+      k!to(t:size()) {
+        value=value+a.rows[i][k]*t[j][k];
+      }
+      row!push(value);
+    }
+    out!push(row);
+  }
+  return out;
+}
+
+List<List<Float>> parallel4(a Matrix, t List<List<Float>>) {
+  n Int=a.rows:size();
+  width Int=(n+3)/4;
+  chunk0 List<List<Float>> = spawn multiplyRows(a, t, width*0+1, min(n, width*1));
+  chunk1 List<List<Float>> = spawn multiplyRows(a, t, width*1+1, min(n, width*2));
+  chunk2 List<List<Float>> = spawn multiplyRows(a, t, width*2+1, min(n, width*3));
+  chunk3 List<List<Float>> = spawn multiplyRows(a, t, width*3+1, min(n, width*4));
+  out List<List<Float>> = List(List<Float>);
+  i0 Int=Int(1);
+  i0!to(chunk0:size()) {
+    row List<Float> = chunk0[i0];
+    out!push(row);
+  }
+  i1 Int=Int(1);
+  i1!to(chunk1:size()) {
+    row List<Float> = chunk1[i1];
+    out!push(row);
+  }
+  i2 Int=Int(1);
+  i2!to(chunk2:size()) {
+    row List<Float> = chunk2[i2];
+    out!push(row);
+  }
+  i3 Int=Int(1);
+  i3!to(chunk3:size()) {
+    row List<Float> = chunk3[i3];
+    out!push(row);
+  }
+  return out;
+}
+
+List<List<Float>> parallel8(a Matrix, t List<List<Float>>) {
+  n Int=a.rows:size();
+  width Int=(n+7)/8;
+  chunk0 List<List<Float>> = spawn multiplyRows(a, t, width*0+1, min(n, width*1));
+  chunk1 List<List<Float>> = spawn multiplyRows(a, t, width*1+1, min(n, width*2));
+  chunk2 List<List<Float>> = spawn multiplyRows(a, t, width*2+1, min(n, width*3));
+  chunk3 List<List<Float>> = spawn multiplyRows(a, t, width*3+1, min(n, width*4));
+  chunk4 List<List<Float>> = spawn multiplyRows(a, t, width*4+1, min(n, width*5));
+  chunk5 List<List<Float>> = spawn multiplyRows(a, t, width*5+1, min(n, width*6));
+  chunk6 List<List<Float>> = spawn multiplyRows(a, t, width*6+1, min(n, width*7));
+  chunk7 List<List<Float>> = spawn multiplyRows(a, t, width*7+1, min(n, width*8));
+  out List<List<Float>> = List(List<Float>);
+  i0 Int=Int(1);
+  i0!to(chunk0:size()) {
+    row List<Float> = chunk0[i0];
+    out!push(row);
+  }
+  i1 Int=Int(1);
+  i1!to(chunk1:size()) {
+    row List<Float> = chunk1[i1];
+    out!push(row);
+  }
+  i2 Int=Int(1);
+  i2!to(chunk2:size()) {
+    row List<Float> = chunk2[i2];
+    out!push(row);
+  }
+  i3 Int=Int(1);
+  i3!to(chunk3:size()) {
+    row List<Float> = chunk3[i3];
+    out!push(row);
+  }
+  i4 Int=Int(1);
+  i4!to(chunk4:size()) {
+    row List<Float> = chunk4[i4];
+    out!push(row);
+  }
+  i5 Int=Int(1);
+  i5!to(chunk5:size()) {
+    row List<Float> = chunk5[i5];
+    out!push(row);
+  }
+  i6 Int=Int(1);
+  i6!to(chunk6:size()) {
+    row List<Float> = chunk6[i6];
+    out!push(row);
+  }
+  i7 Int=Int(1);
+  i7!to(chunk7:size()) {
+    row List<Float> = chunk7[i7];
+    out!push(row);
+  }
+  return out;
+}
+
+List<List<Float>> parallel16(a Matrix, t List<List<Float>>) {
+  n Int=a.rows:size();
+  width Int=(n+15)/16;
+  chunk0 List<List<Float>> = spawn multiplyRows(a, t, width*0+1, min(n, width*1));
+  chunk1 List<List<Float>> = spawn multiplyRows(a, t, width*1+1, min(n, width*2));
+  chunk2 List<List<Float>> = spawn multiplyRows(a, t, width*2+1, min(n, width*3));
+  chunk3 List<List<Float>> = spawn multiplyRows(a, t, width*3+1, min(n, width*4));
+  chunk4 List<List<Float>> = spawn multiplyRows(a, t, width*4+1, min(n, width*5));
+  chunk5 List<List<Float>> = spawn multiplyRows(a, t, width*5+1, min(n, width*6));
+  chunk6 List<List<Float>> = spawn multiplyRows(a, t, width*6+1, min(n, width*7));
+  chunk7 List<List<Float>> = spawn multiplyRows(a, t, width*7+1, min(n, width*8));
+  chunk8 List<List<Float>> = spawn multiplyRows(a, t, width*8+1, min(n, width*9));
+  chunk9 List<List<Float>> = spawn multiplyRows(a, t, width*9+1, min(n, width*10));
+  chunk10 List<List<Float>> = spawn multiplyRows(a, t, width*10+1, min(n, width*11));
+  chunk11 List<List<Float>> = spawn multiplyRows(a, t, width*11+1, min(n, width*12));
+  chunk12 List<List<Float>> = spawn multiplyRows(a, t, width*12+1, min(n, width*13));
+  chunk13 List<List<Float>> = spawn multiplyRows(a, t, width*13+1, min(n, width*14));
+  chunk14 List<List<Float>> = spawn multiplyRows(a, t, width*14+1, min(n, width*15));
+  chunk15 List<List<Float>> = spawn multiplyRows(a, t, width*15+1, min(n, width*16));
+  out List<List<Float>> = List(List<Float>);
+  i0 Int=Int(1);
+  i0!to(chunk0:size()) {
+    row List<Float> = chunk0[i0];
+    out!push(row);
+  }
+  i1 Int=Int(1);
+  i1!to(chunk1:size()) {
+    row List<Float> = chunk1[i1];
+    out!push(row);
+  }
+  i2 Int=Int(1);
+  i2!to(chunk2:size()) {
+    row List<Float> = chunk2[i2];
+    out!push(row);
+  }
+  i3 Int=Int(1);
+  i3!to(chunk3:size()) {
+    row List<Float> = chunk3[i3];
+    out!push(row);
+  }
+  i4 Int=Int(1);
+  i4!to(chunk4:size()) {
+    row List<Float> = chunk4[i4];
+    out!push(row);
+  }
+  i5 Int=Int(1);
+  i5!to(chunk5:size()) {
+    row List<Float> = chunk5[i5];
+    out!push(row);
+  }
+  i6 Int=Int(1);
+  i6!to(chunk6:size()) {
+    row List<Float> = chunk6[i6];
+    out!push(row);
+  }
+  i7 Int=Int(1);
+  i7!to(chunk7:size()) {
+    row List<Float> = chunk7[i7];
+    out!push(row);
+  }
+  i8 Int=Int(1);
+  i8!to(chunk8:size()) {
+    row List<Float> = chunk8[i8];
+    out!push(row);
+  }
+  i9 Int=Int(1);
+  i9!to(chunk9:size()) {
+    row List<Float> = chunk9[i9];
+    out!push(row);
+  }
+  i10 Int=Int(1);
+  i10!to(chunk10:size()) {
+    row List<Float> = chunk10[i10];
+    out!push(row);
+  }
+  i11 Int=Int(1);
+  i11!to(chunk11:size()) {
+    row List<Float> = chunk11[i11];
+    out!push(row);
+  }
+  i12 Int=Int(1);
+  i12!to(chunk12:size()) {
+    row List<Float> = chunk12[i12];
+    out!push(row);
+  }
+  i13 Int=Int(1);
+  i13!to(chunk13:size()) {
+    row List<Float> = chunk13[i13];
+    out!push(row);
+  }
+  i14 Int=Int(1);
+  i14!to(chunk14:size()) {
+    row List<Float> = chunk14[i14];
+    out!push(row);
+  }
+  i15 Int=Int(1);
+  i15!to(chunk15:size()) {
+    row List<Float> = chunk15[i15];
+    out!push(row);
+  }
+  return out;
+}
+
+Unit step(this State, iteration Int) mut {
+  t List<List<Float>> = transpose(this.b);
+  n Int=this.a.rows:size();
+  c List<List<Float>> = List(List<Float>);
+  workers Int=this.threads;
+  single Bool=if(workers==1) {
+    c=multiplyRows(this.a, t, Int(1), n);
+  }
+  single!elif(workers==4) {
+    c=parallel4(this.a, t);
+  }
+  single!elif(workers==8) {
+    c=parallel8(this.a, t);
+  }
+  single:else() {
+    c=parallel16(this.a, t);
+  }
+  this.result=u32(this.result+hashFloat(c[n/2+1][n/2+1]));
+  return Unit();
+}
+
+Int checksum(this State) => this.result;
+Unit resetRandom(this State) mut {
+  return Unit();
+}
+
+Result execute(this Host, cfg Config, name String) mut {
+  state State=State(cfg, name);
+  if(name=="Matmul::T4") {
+    state.threads=Int(4);
+  }
+  if(name=="Matmul::T8") {
+    state.threads=Int(8);
+  }
+  if(name=="Matmul::T16") {
+    state.threads=Int(16);
+  }
+  state!prepare();
+  iterations Int=cfg:integer(name, "iterations");
+  warm Int=max(Int(1), iterations/5);
+  if(cfg:has(name, "warmup_iterations")) {
+    warm=cfg:integer(name, "warmup_iterations");
+  }
+  i Int=Int(0);
+  i!to(warm-1) {
+    state!step(i);
+  }
+  state!resetRandom();
+  started Int=this!start(name);
+  j Int=Int(0);
+  j!to(iterations-1) {
+    state!step(j);
+  }
+  elapsed Int=this!stop(started);
+  actual Int=u32(state:checksum());
+  expected Int=u32(cfg:integer(name, "checksum"));
+  nanos Int=this!finish(elapsed, actual, expected);
+  failed Int=Int(0);
+  if(actual~=expected) {
+    failed=Int(1);
+  }
+  return Result(nanos, failed);
+}

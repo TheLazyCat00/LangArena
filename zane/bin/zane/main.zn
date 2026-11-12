@@ -1,0 +1,9 @@
+package zane;
+
+import core$;
+
+@primitives$Unit main() {
+	text @primitives$String("hello world");
+	@program$console!print(text);
+	return @primitives$Unit();
+}

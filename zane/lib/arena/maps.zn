@@ -81,9 +81,12 @@ StringMap(capacity Int) => init {
 }
 
 // The slot that holds key, or the empty slot where it belongs; 0 if full.
+// The djb2 hash is mixed, as IntMap mixes its keys: keys that differ in
+// their last characters, such as "item_1" and "item_2", hash to adjacent
+// values, and linear probing would make one long cluster of them.
 Int slot(this StringMap, key String) {
   capacity Int=this.slots:size();
-  index Int=rem(hash(key), capacity)+1;
+  index Int=rem(u32(hash(key)*2654435761), capacity)+1;
   probe Int=Int(1);
   probe!to(capacity) {
     entry Int=this.slots[index];

@@ -3,21 +3,24 @@ import core$;
 import math$;
 import arena$;
 // A cell's kind is 0..4 and its neighbors are cell indices (at most w*h), so
-// both are stored at 32 bits.
+// both are stored at 32 bits. An interior cell has 4 neighbors, a border cell
+// none; they sit in four slots per cell in State.neighbors, next to each
+// other as in C's inline neighbors[4], not in a list of the cell's own.
 type Cell = struct {
   kind I32;
-  neighbors List<I32>;
+  degree I32;
 }
 
 Cell(kind I32) => init {
   kind;
-  neighbors=List(I32);
+  degree=I32(0);
 }
 
 type State = #struct {
   w Int;
   h Int;
   cells List<Cell>;
+  neighbors List<I32>;
   rng Rng;
   result Int;
   path List<I32>;
@@ -28,6 +31,7 @@ State(cfg Config, name String) => init {
   w=cfg:integer(name, "w");
   h=cfg:integer(name, "h");
   cells=List(Cell);
+  neighbors=List(I32);
   rng=Rng();
   result=Int(0);
   path=List(I32);
@@ -37,11 +41,13 @@ State(cfg Config, name String) => init {
 Int start(this State) => this.w+2;
 Int finish(this State) => (this.h-1)*this.w-1;
 Bool walkable(kind I32) => kind==1 or kind==2 or kind==3;
+Int degree(this State, index Int) => Int(this.cells[index].degree);
+Int neighbor(this State, index Int, i Int) => Int(this.neighbors[(index-1)*4+i]);
 Int adjacentOpen(this State, index Int) {
   count Int=Int(0);
   i Int=Int(1);
-  i!to(this.cells[index].neighbors:size()) {
-    if(walkable(this.cells[Int(this.cells[index].neighbors[i])].kind)) {
+  i!to(this:degree(index)) {
+    if(walkable(this.cells[this:neighbor(index, i)].kind)) {
       count=count+1;
     }
   }
@@ -61,9 +67,9 @@ Unit dig(this State, index Int) mut {
       this.cells[current].kind=I32(1);
       i Int=Int(1);
       i!to(Int(4)) {
-        neighbor I32=this.cells[current].neighbors[i];
-        if(this.cells[Int(neighbor)].kind==0) {
-          stack!push(neighbor);
+        neighbor Int=this:neighbor(current, i);
+        if(this.cells[neighbor].kind==0) {
+          stack!push(I32.wrap(neighbor));
         }
       }
     }
@@ -78,7 +84,7 @@ Unit ensureFinish(this State, index Int) mut {
   }
   i Int=Int(1);
   i!to(Int(4)) {
-    neighbor Int=Int(this.cells[index].neighbors[i]);
+    neighbor Int=this:neighbor(index, i);
     if(this.cells[neighbor].kind==0) {
       this!ensureFinish(neighbor);
     }
@@ -91,14 +97,14 @@ Unit generate(this State) mut {
   finish Int=this:finish();
   i Int=Int(1);
   i!to(Int(4)) {
-    neighbor Int=Int(this.cells[start].neighbors[i]);
+    neighbor Int=this:neighbor(start, i);
     if(this.cells[neighbor].kind==0) {
       this!dig(neighbor);
     }
   }
   j Int=Int(1);
   j!to(Int(4)) {
-    neighbor Int=Int(this.cells[finish].neighbors[j]);
+    neighbor Int=this:neighbor(finish, j);
     if(this.cells[neighbor].kind==0) {
       this!ensureFinish(neighbor);
     }
@@ -111,6 +117,7 @@ Unit prepare(this State) mut {
   i!to(this.w*this.h) {
     this.cells!push(Cell(I32(0)));
   }
+  this.neighbors=filled(this.w*this.h*4, I32(0));
   this.cells[this:start()].kind=I32(2);
   this.cells[this:finish()].kind=I32(3);
   y Int=Int(0);
@@ -119,17 +126,19 @@ Unit prepare(this State) mut {
     x!to(this.w-1) {
       index Int=y*this.w+x+1;
       interior Bool=if(x>0 and y>0 and x<this.w-1 and y<this.h-1) {
-        this.cells[index].neighbors!push(I32.wrap(index-this.w));
-        this.cells[index].neighbors!push(I32.wrap(index+this.w));
-        this.cells[index].neighbors!push(I32.wrap(index+1));
-        this.cells[index].neighbors!push(I32.wrap(index-1));
+        base Int=(index-1)*4;
+        this.cells[index].degree=I32(4);
+        this.neighbors[base+1]=I32.wrap(index-this.w);
+        this.neighbors[base+2]=I32.wrap(index+this.w);
+        this.neighbors[base+3]=I32.wrap(index+1);
+        this.neighbors[base+4]=I32.wrap(index-1);
         j Int=Int(1);
         j!to(Int(4)) {
           a Int=this.rng!next(Int(4))+1;
           b Int=this.rng!next(Int(4))+1;
-          old I32=this.cells[index].neighbors[a];
-          this.cells[index].neighbors[a]=this.cells[index].neighbors[b];
-          this.cells[index].neighbors[b]=old;
+          old I32=this.neighbors[base+a];
+          this.neighbors[base+a]=this.neighbors[base+b];
+          this.neighbors[base+b]=old;
         }
       }
       interior:else() {
@@ -207,15 +216,14 @@ List<I32> bfs(this State) {
     if(read<=cells:size()) {
       current Int=Int(cells[read]);
       j Int=Int(1);
-      j!to(this.cells[current].neighbors:size()) {
-        neighbor I32=this.cells[current].neighbors[j];
-        at Int=Int(neighbor);
+      j!to(this:degree(current)) {
+        at Int=this:neighbor(current, j);
         if(at==target) {
           return trace(cells, parents, read, at);
         }
         if(walkable(this.cells[at].kind) and ~visited[at]) {
           visited[at]=Bool(true);
-          cells!push(neighbor);
+          cells!push(I32.wrap(at));
           parents!push(I32.wrap(read));
         }
       }
@@ -248,8 +256,8 @@ List<I32> astar(this State) {
       return reconstruct(previous, current);
     }
     j Int=Int(1);
-    j!to(this.cells[current].neighbors:size()) {
-      neighbor Int=Int(this.cells[current].neighbors[j]);
+    j!to(this:degree(current)) {
+      neighbor Int=this:neighbor(current, j);
       if(walkable(this.cells[neighbor].kind)) {
         tentative Int=Int(score[current])+1;
         if(tentative<Int(score[neighbor])) {

@@ -65,34 +65,47 @@ jobs:
           docker image prune --all --force
           df -h /
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Build the image chain for ${{ matrix.run.container }}
+      - name: Build the image chains for ${{ matrix.run.container }} and the clang_c reference
         env:
           CONTAINER: ${{ matrix.run.container }}
         run: |
-          chain=()
-          service="$CONTAINER"
-          while :; do
-            chain=("$service" "${chain[@]}")
-            parent=$(grep -m1 -oP '^FROM langarena:\K\S+' "docker/$service") || break
-            service="$parent"
-          done
-          echo "Building: ${chain[*]}"
-          for service in "${chain[@]}"; do
-            docker compose build "$service"
+          built=" "
+          for target in "$CONTAINER" clang_c; do
+            chain=()
+            service="$target"
+            while :; do
+              chain=("$service" "${chain[@]}")
+              parent=$(grep -m1 -oP '^FROM langarena:\K\S+' "docker/$service") || break
+              service="$parent"
+            done
+            for service in "${chain[@]}"; do
+              case "$built" in *" $service "*) continue;; esac
+              echo "::group::docker compose build $service"
+              docker compose build "$service"
+              echo "::endgroup::"
+              built="$built$service "
+            done
           done
           df -h /
-      - name: Run ${{ matrix.run.name }}
+      # Each run is paired with C/Clang on the same runner: hosted runners
+      # differ in CPU, so the ranking compares each run with its own
+      # runner's C/Clang rather than raw times across machines.
+      - name: Run ${{ matrix.run.name }} and the C/Clang reference
         env:
-          RUN_NAME: ${{ matrix.run.name }}
+          RUN: ${{ matrix.run.name }}
           TEST: ${{ needs.plan.outputs.fixture == 'true' && '1' || '' }}
         run: |
-          ls results > /tmp/before.txt
-          ruby benchmarks.rb
           mkdir -p /tmp/arena-result
-          for f in results/*.js; do
-            grep -qxF "$(basename "$f")" /tmp/before.txt || cp "$f" /tmp/arena-result/
-          done
-          ls /tmp/arena-result
+          bench() {
+            ls results > /tmp/before.txt
+            RUN_NAME="$1" ruby benchmarks.rb
+            for f in results/*.js; do
+              if ! grep -qxF "$(basename "$f")" /tmp/before.txt; then mv "$f" "/tmp/arena-result/$2"; fi
+            done
+          }
+          bench "$RUN" run.js
+          if [ "$RUN" != "C/Clang" ]; then bench C/Clang ref.js; fi
+          ls -l /tmp/arena-result
       - name: Name the artifact
         id: slug
         if: always()
@@ -104,7 +117,7 @@ jobs:
         with:
           name: result-${{ steps.slug.outputs.slug }}
           path: |
-            /tmp/arena-result/*.js
+            /tmp/arena-result/
             /tmp/log_crash.txt
           if-no-files-found: warn
           retention-days: 30
@@ -122,11 +135,9 @@ jobs:
       - name: Merge and rank
         run: |
           out="results/$(date -u +%Y-%m-%d)-github-actions.js"
-          ruby .github/arena/merge.rb "$out" summary.md $(find parts -name '*.js')
+          ruby .github/arena/merge.rb "$out" summary.md parts
           cat summary.md >> "$GITHUB_STEP_SUMMARY"
           echo "MERGED=$out" >> "$GITHUB_ENV"
-      - name: Generate the website
-        run: cd docs && ruby gen.rb "../$MERGED"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: arena-results
@@ -134,7 +145,13 @@ jobs:
             ${{ env.MERGED }}
             summary.md
             parts/**/log_crash.txt
+      # gen.rb stops on a run with missing results, so the site is best effort.
+      - name: Generate the website
+        id: site
+        continue-on-error: true
+        run: cd docs && ruby gen.rb "../$MERGED"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: steps.site.outcome == 'success'
         with:
           name: arena-site
           path: docs/

@@ -45,15 +45,7 @@ Int crc32(data Buffer) {
 
 // This preserves the reference's custom hash, despite its SHA256 name.
 Int simpleSha(data Buffer) {
-  hashes List<Int> = List(Int);
-  hashes!push(Int(1779033703));
-  hashes!push(Int(3144134277));
-  hashes!push(Int(1013904242));
-  hashes!push(Int(2773480762));
-  hashes!push(Int(1359893119));
-  hashes!push(Int(2600822924));
-  hashes!push(Int(528734635));
-  hashes!push(Int(1541459225));
+  hashes Array<Int, 8> = Array([Int(1779033703), Int(3144134277), Int(1013904242), Int(2773480762), Int(1359893119), Int(2600822924), Int(528734635), Int(1541459225)]);
   i Int=Int(1);
   i!to(data:size()) {
     index Int=rem(i-1, Int(8))+1;

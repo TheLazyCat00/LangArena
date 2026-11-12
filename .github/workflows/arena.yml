@@ -93,6 +93,7 @@ jobs:
       - name: Run ${{ matrix.run.name }} and the C/Clang reference
         env:
           RUN: ${{ matrix.run.name }}
+          TRAIN: ${{ matrix.run.train }}
           TEST: ${{ needs.plan.outputs.fixture == 'true' && '1' || '' }}
         run: |
           mkdir -p /tmp/arena-result
@@ -103,6 +104,9 @@ jobs:
               if ! grep -qxF "$(basename "$f")" /tmp/before.txt; then mv "$f" "/tmp/arena-result/$2"; fi
             done
           }
+          # A PGO run builds from the profile its instrumented /Gen run
+          # leaves in the source tree, so train it here first.
+          if [ -n "$TRAIN" ]; then bench "$TRAIN" train.js; fi
           bench "$RUN" run.js
           if [ "$RUN" != "C/Clang" ]; then bench C/Clang ref.js; fi
           ls -l /tmp/arena-result

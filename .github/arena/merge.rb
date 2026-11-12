@@ -109,7 +109,7 @@ rows.select { |x| x[:run] =~ /\AZane/ }.each do |z|
     end.compact.sort_by { |_, v| v }
     own = rel.find { |r, _| r == z[:run] }
     rank = own ? "#{rel.index(own) + 1}/#{rel.size}" : "-"
-    md << "| #{t} | #{format("%.3f", mine)} | #{own ? format("%.2f", own[1]) : "-"} | #{rank} | #{rel[0][0]} (#{format("%.2f", rel[0][1])}) |\n"
+    md << "| #{t} | #{format("%.3f", mine)} | #{own ? format("%.2f", own[1]) : "-"} | #{rank} | #{rel.empty? ? "-" : "#{rel[0][0]} (#{format("%.2f", rel[0][1])})"} |\n"
   end
 end
 unless RECOVERED.empty?

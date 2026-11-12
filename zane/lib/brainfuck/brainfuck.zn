@@ -135,21 +135,23 @@ Int runArray(source String) {
     if(pc>commands:size()) {
       return tape.result;
     }
+    // A bracket that jumps lands on its partner, and the step past it
+    // skips that one, as in C.
     c Int=commands[pc];
-    tape!command(c);
-    jump Bool=Bool(false);
-    if(c==91) {
-      jump=tape.bytes:get(tape.position)==0;
+    bracket Bool=if(c==91) {
+      if(tape.bytes:get(tape.position)==0) {
+        pc=jumps[pc];
+      }
     }
-    if(c==93) {
-      jump=tape.bytes:get(tape.position)~=0;
+    bracket!elif(c==93) {
+      if(tape.bytes:get(tape.position)~=0) {
+        pc=jumps[pc];
+      }
     }
-    branch Bool=if(jump) {
-      pc=jumps[pc];
+    bracket:else() {
+      tape!command(c);
     }
-    branch:else() {
-      pc=pc+1;
-    }
+    pc=pc+1;
   }
   return tape.result;
 }

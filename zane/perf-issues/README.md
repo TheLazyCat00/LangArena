@@ -1,8 +1,8 @@
 # Zane vs C: performance issues
 
 As of 2026-11-13, measured against `zane-perf` at 354c5f2 with zane-lang/compiler
-at 633ca32 and core v0.10. The list was also kept as a Claude Doc, with a chart
-of all 50 ratios, which still shows the 2026-11-12 run:
+at 633ca32 and core v0.10. The same list is kept as a Claude Doc, with a chart
+of all 50 ratios from the 2026-11-13 re-bench:
 https://claude.ai/artifact/RJcMtraHukcaWwMF9kPPPx
 
 ## Summary

@@ -199,11 +199,19 @@ runtime asks for. Repros build with `zane build` in their directory.
 
 ### R5. Loops reload list counts and check bounds twice
 
-- **Mechanism.** Each store through a list might alias the list header, so LLVM
-  reloads the count and data pointer after every store. An index is checked
-  once by the indexing intrinsic and once more by the caller's code.
-  Brainfuck's `command` is not inlined (635M calls), because the Buffer push
-  slow path inlined into it makes it too big.
+- **Mechanism.** A list's handle (items and count) lives in its scope's
+  frame, which LLVM sees escape. So any call in a loop, a push's slow path
+  included, might have written it, and LLVM reloads the items and count
+  every round and redoes each index check. The compiler read them once
+  before a loop only when the body pushed nowhere and called nothing, and
+  every loop here does one or the other. Some checks come twice. In
+  Brainfuck, the index check on `commands[pc-1]` follows the port's own
+  `pc > size` test, and LLVM can't merge the two because `pc` comes from
+  `jumps[pc]` and isn't known to be at least 1. In NeuralNet, the checks
+  index through data (`synapses[index]`, `neurons[synapse.source]`).
+  Brainfuck's `command` (635M calls) and ArithEncode's `BitWriter.bit` are
+  not inlined because the port's C `Buffer` reserve (`binding.c`) is inlined
+  into them. Zane's own push slow path is already an out-of-line call.
 - **Measured.** Brainfuck::Array 35.4G instructions vs C 13.3G;
   Brainfuck::Recursion 38.9G vs 18.6G.
 - **Hits.** Brainfuck (both). HuffDecode: about 20 instructions per bit, with
@@ -212,9 +220,38 @@ runtime asks for. Repros build with `zane build` in their directory.
   `BitWriter.bit` is not inlined either. NeuralNet, Graph::BFS / DFS: index
   reloads plus a bounds check per access. SHA256 had the same problem until its
   hashes moved into an `Array` (354c5f2).
-- **Fix direction.** Emit TBAA or `noalias` metadata so a list's header and its
-  elements are known not to alias; mark push slow paths `cold`/`noinline` so
-  callers stay small.
+- **Fix direction.** Read the handles once before loops that push or call,
+  when nothing in the loop can change them. Alias tags are not the blocker:
+  re-rooting package C's TBAA tags under Zane's left the executable
+  byte-identical.
+- **Fixed in part** in two PRs. [zane-lang/compiler#371](https://github.com/zane-lang/compiler/pull/371)
+  (`ba53d1e`) stops `Loop_pushes` from taking an imported function, whose
+  body it can't see, as unable to change a list.
+  [zane-lang/compiler#372](https://github.com/zane-lang/compiler/pull/372)
+  (`1062c7d`) reads a loop's lists once before it when the body pushes only
+  onto a list no other address reaches, calls only functions that change no
+  list handle, or calls into C that cannot call back. An element list at an
+  index the loop does not change (`this.adj[vertex]`) is read before the
+  loop too, with an empty stand-in when the index is out of range, so the
+  program still stops at the same read. In BFS's inner loop the common path
+  is now about 9 instructions instead of about 20. Callgrind instructions,
+  compiler `main` at 9cd0166 → #372, port unchanged, all 50 checksums OK,
+  minor faults unchanged:
+
+  | Test | Instructions before | after | |
+  | --- | ---: | ---: | ---: |
+  | Graph::BFS | 12.87G | 7.83G | −39.2% |
+  | Graph::DFS | 7.77G | 5.90G | −24.2% |
+  | Brainfuck::Recursion | 38.92G | 35.59G | −8.5% |
+  | Brainfuck::Array | 35.47G | 33.30G | −6.1% |
+  | Compress::HuffDecode | 29.38G | 27.74G | −5.6% |
+  | Etc::NeuralNet | 25.41G | 23.77G | −6.4% |
+  | Compress::ArithEncode | 10.49G | 10.49G | |
+  | Compress::ArithDecode | 14.04G | 14.04G | |
+
+  Still open: inlining `command` and `bit` is left alone, since their size
+  comes from the port's C `Buffer`. Whether Brainfuck's and NeuralNet's
+  second checks can be removed has not been investigated.
 
 ### R6. A short counted loop with an early exit pays a range-check prologue on every entry
 
@@ -329,7 +366,7 @@ and the repro under its issue is the test to make pass first.
    blocks mapped when a region drains, and free a list that a field assignment
    replaces. Covers the BWT tests' 0.4–0.8 s of system time, the Maze/Graph
    fills and Binarytrees::Arena.
-4. **Tell LLVM what can't alias, and keep slow paths out of line (R5).** Covers
+4. **Read list handles once before loops that push or call (R5).** Covers
    both Brainfuck tests at 1.7–1.8×, HuffDecode, NeuralNet and Arith.
 5. **Add `while` to core (B3, R6).** Covers Sort::Quick and any future scan loop.
 6. **Look into the Json gap.** Same instruction count, 50 ms slower: check

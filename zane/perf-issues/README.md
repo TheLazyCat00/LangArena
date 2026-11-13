@@ -140,6 +140,31 @@ runtime asks for. Repros build with `zane build` in their directory.
   and keep big blocks mapped for reuse when a region drains.
 - **Repro.** [`repros/list-return`](repros/list-return): `out/host/repro 1000000 40`;
   `c-equivalent.c` with the same arguments for comparison.
+- **Fixed** in two steps. [zane-lang/compiler#364](https://github.com/zane-lang/compiler/pull/364)
+  (`2ccc514`) moves a returned local out of its slot, which removed the copy
+  and fixed the repro: 41,267 → 1,072 faults, below C's 3,976.
+  [zane-lang/compiler#368](https://github.com/zane-lang/compiler/pull/368)
+  (`97be120`, spec rule in [zane-lang/spec#277](https://github.com/zane-lang/spec/pull/277))
+  covers the rest: a function whose scope drains three or more big lists per
+  call. A context now keeps up to 16 drained list reservations mapped, holding
+  at most 64 MiB, instead of 2, and the next list past 1 MiB grows into one.
+  When the system refuses a new reservation, the kept ones are given back
+  first. Minor page faults and system time, compiler `main` after #366
+  (b7d1da3) → #368, port unchanged, all 50 checksums OK:
+
+  | Program | Faults before | after | C | System time before | after |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | `repros/list-return 1000000 40` | 1,072 | 1,075 | 3,975 | | |
+  | Compress::BWTDecode | 84,188 | 9,930 | 18,835 | 0.19 s | 0.03 s |
+  | Maze::BFS | 53,148 | 13,391 | 29,477 | | |
+  | Maze::AStar | 184,612 | 18,003 | 512,098 | | |
+  | Graph::AStar | 21,014 | 21,009 | | | |
+  | Compress::BWTEncode | 1,095 | 1,093 | | | |
+  | Binarytrees::Arena | 6,464 | 6,460 | | | |
+
+  Graph::AStar, BWTEncode and Binarytrees::Arena already faulted only on
+  first touch: what they fault is the memory they use. Callgrind
+  instructions did not move.
 
 ### R4. A list replaced in a field is never reclaimed
 
@@ -155,6 +180,22 @@ runtime asks for. Repros build with `zane build` in their directory.
 - **Fix direction.** Free the old value on field assignment when the field held
   the only reference.
 - **Repro.** [`repros/field-replace`](repros/field-replace): `out/host/repro 3000000 40`.
+- **Fixed** in [zane-lang/compiler#368](https://github.com/zane-lang/compiler/pull/368)
+  (`97be120`). The overwrite already freed the old list, but onto its
+  region's stack of blocks of that size, and a list growing past 1 MiB
+  always reserved fresh addresses instead of reading those stacks. Growth
+  past 1 MiB now takes a returned span whose reservation holds as many
+  addresses as a fresh one would: one of its own size first, otherwise the
+  smallest that fits. `tests/memory-probes/reclaim.py` holds the field case
+  to one peak RSS at 4 and at 40 rounds. Compiler `main` after #366
+  (b7d1da3) → #368:
+
+  | Program | Peak RSS before | after | Faults before | after |
+  | --- | ---: | ---: | ---: | ---: |
+  | `repros/field-replace 3000000 40` | 919 MB | 26 MB | 234,762 | 6,214 |
+
+  Binarytrees::Arena keeps its local-arena port (916a910), which is also
+  what C does.
 
 ### R5. Loops reload list counts and check bounds twice
 

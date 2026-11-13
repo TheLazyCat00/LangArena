@@ -350,7 +350,7 @@ whole process at full size, input setup included.
 | Etc::NeuralNet | 0.921 | 1.228 | 1.33 | R5 | 23.8G vs 18.2G instructions; same layout as C, bounds checks on index lists |
 | Compress::HuffDecode | 0.831 | 1.089 | 1.31 | R5, R2 | 27.7G vs 15.8G instructions; node list reloaded per bit, output pushed per byte |
 | Etc::LogParser | 0.487 | 0.621 | 1.28 | not yet known | new at 1.2× or worse (below 1.2× in the earlier run); not profiled |
-| Graph::BFS | 0.891 | 1.093 | 1.23 | R2, B1, R5 | no valid Callgrind count (see the note below); the `visited` fill, plus pushes into a growing queue |
+| Graph::BFS | 0.891 | 1.093 | 1.23 | R2, B1, R5 | 7.84G vs 6.77G instructions; the `visited` fill, plus pushes into a growing queue |
 | Base64::Encode | 0.105 | 0.128 | 1.22 | R1 | 1.65G vs 1.64G instructions, equal; the gap is 23 ms |
 | Json::ParseDom | 0.086 | 0.104 | 1.21 | open | 2.25G vs 1.72G instructions for the whole process (see the open question) |
 | Compress::BWTEncode | 0.653 | 0.789 | 1.21 | R2, B1, R3 | 10.8G vs 6.0G instructions; fills, list growth |
@@ -426,21 +426,42 @@ Faster than C now: Binarytrees::Obj (0.17), Distance::NGram (0.33), Calculator::
 | Distance::Jaro | 1.101 | 0.635 | 0.58 | below 1.2 |
 | Distance::NGram | 1.717 | 0.572 | 0.33 | below 1.2 |
 
-### Valgrind does not run four tests correctly
+### Valgrind ran three tests wrong (fixed)
 
-Under Valgrind (`--tool=none`, Callgrind or Memcheck), the Zane build
-misbehaves on four tests that are OK natively:
+Under Valgrind, three tests that are OK natively went wrong:
 
-- **Maze::Generator, Maze::BFS, Maze::AStar:** crash with SIGSEGV in
-  `maze$generate`. Callgrind stops at about 593M instructions after
+- **Maze::Generator, Maze::BFS, Maze::AStar:** under `--tool=none`, they
+  crashed with SIGSEGV in `maze$generate`. Under Callgrind, they stopped with
   `index out of range`.
-- **Graph::BFS:** finishes, but with checksum 48960 instead of 50400.
+- **Graph::BFS:** under `--tool=none`, it gave checksum 48960 instead of
+  50400. Under Callgrind it was right, with the same count as after the fix.
+  Its 7.83G in R5 stands.
 
-Builds from before #375 behave the same. Earlier Callgrind numbers for these
-four tests are therefore unreliable, including the earlier Graph::BFS
-"1.03G vs 0.58G". The cause is not yet known. Memcheck reports writes into the
-ranges the runtime reserves and commits from its fault handler
-(`runtime/region.c`).
+**Cause.** The runtime makes a context's frames usable a step at a time,
+from its fault handler, and then runs the faulting access again. Valgrind
+hands a handler stale registers, so that access could run again at an older
+address. Natively, the processor reports exact registers, so this never
+happens outside Valgrind.
+
+**Fixed** in [zane-lang/compiler#376](https://github.com/zane-lang/compiler/pull/376)
+(`22397fc`). Under Valgrind, the runtime now makes the whole range usable
+when it reserves it. All 50 tests print `OK` under `valgrind --tool=none`.
+
+The compiler's `dev/bench/langarena/run` measures tests under Callgrind and
+keeps a count only from a run that printed `NAME: OK`. Callgrind
+instructions, whole process, full size, `run.js`:
+
+| Test | #375, before | #376 | C |
+| --- | ---: | ---: | ---: |
+| Maze::Generator | `index out of range` | 4.56G | 3.08G |
+| Maze::BFS | `index out of range` | 3.46G | 1.95G |
+| Maze::AStar | `index out of range` | 5.73G | 4.74G |
+| Graph::BFS | 7.84G | 7.84G | 6.77G |
+
+The earlier Graph::BFS figure, "1.03G vs 0.58G", does not match a full-size
+run of either build. R2's Maze counts (3.47G and 5.75G after #366) are
+within 0.4% of #376's, so those runs most likely did not crash. #366 has
+not been rebuilt to check.
 
 ## Recommended fix order
 

@@ -1,19 +1,26 @@
 # Zane vs C: performance issues
 
-As of 2026-11-12, measured against `zane-perf` at 354c5f2 with compiler v0.32
-and core v0.10. The same list is kept as a Claude Doc, which also has a chart
-of all 50 ratios: https://claude.ai/artifact/RJcMtraHukcaWwMF9kPPPx
+As of 2026-11-13, measured against `zane-perf` at 354c5f2 with zane-lang/compiler
+at 633ca32 and core v0.10. The list was also kept as a Claude Doc, with a chart
+of all 50 ratios, which still shows the 2026-11-12 run:
+https://claude.ai/artifact/RJcMtraHukcaWwMF9kPPPx
 
 ## Summary
 
-Zane runs at a geomean of 1.17× C across the 50 tests, down from 1.42× at the
-start of `zane-perf`. 22 tests are still at 1.2× or slower. The extra work a
-fair port could remove has been removed. What is left comes from six
+Zane runs at a geomean of 0.94× C across the 50 tests. It was 1.17× at the
+start of the compiler fixes for these issues and 1.42× at the start of
+`zane-perf` (re-bench below). 11 tests are still at 1.2× or slower. The extra
+work a fair port could remove has been removed. What is left comes from six
 compiler/runtime mechanisms (R1–R6) and three core gaps (B1–B3), listed below
 with repros in [`repros/`](repros).
 
-Eight of the worst ten tests come down to string copies (R1) or list fills
-(R2/B1). The other two are the Brainfuck tests (R5).
+Of the 11 slow tests:
+
+- **Loop reloads (R5):** the two Brainfuck tests, NeuralNet and HuffDecode.
+- **String copies (R1):** CacheSimulation, LZWEncode and Base64::Encode.
+- **List fills (R2/B1):** Graph::BFS and BWTEncode.
+- **The Json gap (open):** Json::ParseDom.
+- **Not yet profiled:** LogParser.
 
 ## Port fixes on zane-perf (class a)
 
@@ -266,6 +273,13 @@ runtime asks for. Repros build with `zane build` in their directory.
 - **Hits.** Sort::Quick; any scan loop that usually stops after a few elements.
 - **Fix direction.** A condition-tested loop (B3), or skip loop versioning when
   the trip count is unknown and likely small.
+- **Fixed** in [zane-lang/compiler#375](https://github.com/zane-lang/compiler/pull/375):
+  a loop that can leave early, holds no loop, and indexes an element by a local
+  it steps by a constant apart from its counter is a search. Codegen weights its
+  loop test as going round a few times, so IRCE leaves it whole. Sort::Quick:
+  11.58G → 8.37G instructions for the whole run (C: 4.96G); the repro 164.8M →
+  122.4M. Every other LangArena test and `tests/perf` program is within 0.1%.
+  The port is unchanged.
 
 ### Open question: Json is slower at equal instruction counts
 
@@ -316,39 +330,117 @@ becomes a counted loop with an early `return`, or a loop to
 `while(condition, body)` in `controlflow.zn` would let the compiler emit C's
 loop shape.
 
+**Closed without a core change.** Zane's repetition is bounded by
+construction (spec control-flow §3.5, §4.3), and the language will not get an
+unbounded `while`. The cost B3 stood for is R6's prologue, which the compiler
+now removes (zane-lang/compiler#375); the counter left over is one register.
+
 ## Remaining slow tests
 
-Every test at 1.2× C or worse, from a back-to-back run of both
-implementations. None has extra work left that a fair port could remove.
+Every test at 1.2× C or worse in the re-bench below. None has extra work left
+that a fair port could remove. Instruction counts are Callgrind totals for the
+whole process at full size, input setup included.
 
 | Test | C (s) | Zane (s) | Zane / C | Issues | What the profile shows |
 | --- | --- | --- | --- | --- | --- |
-| Base64::Encode | 0.142 | 0.539 | 3.80 | R1 | same aklomp codec; two extra copies of each result string per call |
-| Graph::AStar | 1.237 | 3.667 | 2.96 | R2, B1, R3 | `filled()` is 72% of a step: 2 × 500k pushes per search |
-| Etc::CacheSimulation | 0.989 | 2.758 | 2.79 | R1 | 14.6 allocations, 5 copies, 4 promotes per access |
-| Base64::Decode | 0.162 | 0.425 | 2.62 | R1 | as Encode |
-| Compress::BWTEncode | 0.892 | 2.109 | 2.36 | R2, B1, R3 | fills are about 50% of instructions; system time 0.36 s vs 0.04 s |
-| Compress::LZWEncode | 1.894 | 4.286 | 2.26 | R1 | a `character()` + concat per input byte, each copied and promoted |
-| Template::Regex | 1.933 | 3.710 | 1.92 | R1 | 2.70G vs 1.06G instructions; allocator and promote functions top the profile |
-| Brainfuck::Recursion | 1.546 | 2.843 | 1.84 | R5 | 38.9G vs 18.6G instructions; `command` dispatch not inlined |
-| Brainfuck::Array | 1.455 | 2.513 | 1.73 | R5 | 35.4G vs 13.3G; count reloads, double bounds check, `command` called 635M times |
-| Compress::LZWDecode | 1.301 | 2.118 | 1.63 | R1 | one concat per dictionary entry |
-| Compress::BWTDecode | 1.409 | 2.252 | 1.60 | R2, R3 | `filled(n)` + list growth copies; system time 0.79 s |
-| Maze::AStar | 1.613 | 2.555 | 1.58 | R2, B1, R3 | three n-entry fills per search |
-| Template::Parse | 1.644 | 2.490 | 1.51 | R1 | about 12 allocations per placeholder |
-| Json::ParseMapping | 0.278 | 0.417 | 1.50 | open | equal instructions (see the open question) |
-| Json::ParseDom | 0.106 | 0.157 | 1.48 | open | as ParseMapping |
-| Compress::HuffDecode | 1.202 | 1.769 | 1.47 | R5, R2 | 1.34G vs 0.90G; node list reloaded per bit, output pushed per byte |
-| Maze::BFS | 0.645 | 0.848 | 1.31 | R2, B1 | the `visited` fill |
-| Etc::NeuralNet | 1.268 | 1.627 | 1.28 | R5 | 2.12G vs 1.82G; same layout as C, bounds checks on index lists |
-| Graph::BFS | 1.391 | 1.758 | 1.26 | R2, B1, R5 | 1.03G vs 0.58G; the `visited` fill, plus pushes into a growing queue (C allocates it once) |
-| Binarytrees::Arena | 0.504 | 0.627 | 1.24 | R3 | fewer instructions than C; the remaining time is page faults |
-| Sort::Quick | 1.791 | 2.185 | 1.22 | R6, B3 | 0.96G vs 0.49G instructions; scan prologues |
-| Graph::DFS | 1.362 | 1.660 | 1.22 | R2, B1, R5 | not profiled; the same fill-and-push structure as Graph::BFS |
+| Brainfuck::Array | 1.324 | 2.154 | 1.63 | R5 | 33.3G vs 13.4G instructions; count reloads, double bounds check, `command` not inlined |
+| Brainfuck::Recursion | 1.541 | 2.388 | 1.55 | R5 | 35.6G vs 18.6G instructions; `command` dispatch not inlined |
+| Etc::CacheSimulation | 0.752 | 1.114 | 1.48 | R1 | 17.4G vs 11.8G instructions; allocations, copies and promotes per access |
+| Compress::LZWEncode | 1.326 | 1.799 | 1.36 | R1 | 28.4G vs 18.1G instructions; a `character()` + concat per input byte |
+| Etc::NeuralNet | 0.921 | 1.228 | 1.33 | R5 | 23.8G vs 18.2G instructions; same layout as C, bounds checks on index lists |
+| Compress::HuffDecode | 0.831 | 1.089 | 1.31 | R5, R2 | 27.7G vs 15.8G instructions; node list reloaded per bit, output pushed per byte |
+| Etc::LogParser | 0.487 | 0.621 | 1.28 | not yet known | new at 1.2× or worse (below 1.2× in the earlier run); not profiled |
+| Graph::BFS | 0.891 | 1.093 | 1.23 | R2, B1, R5 | no valid Callgrind count (see the note below); the `visited` fill, plus pushes into a growing queue |
+| Base64::Encode | 0.105 | 0.128 | 1.22 | R1 | 1.65G vs 1.64G instructions, equal; the gap is 23 ms |
+| Json::ParseDom | 0.086 | 0.104 | 1.21 | open | 2.25G vs 1.72G instructions for the whole process (see the open question) |
+| Compress::BWTEncode | 0.653 | 0.789 | 1.21 | R2, B1, R3 | 10.8G vs 6.0G instructions; fills, list growth |
 
-Faster than C now: Maze::Generator (0.73), Hash::SHA256 (0.78), HuffEncode
-(0.86) and Words (1.00), plus the tests that were already ahead
-(Binarytrees::Obj, Calculator::Interpreter, NGram, GameOfLife, Jaro, Sieve).
+Etc::LogParser is new to this list: the earlier run had it below 1.2×.
+
+Faster than C now: Binarytrees::Obj (0.17), Distance::NGram (0.33), Calculator::Interpreter (0.48), Etc::Words (0.49), Distance::Jaro (0.58), Etc::GameOfLife (0.61), Template::Regex (0.67), Maze::AStar (0.67), Compress::HuffEncode (0.75), Maze::Generator (0.78), Compress::LZWDecode (0.79), Calculator::Ast (0.81), Maze::BFS (0.82), CSV::Parse (0.87), Json::Generate (0.89), Template::Parse (0.92), Etc::Sieve (0.93), Hash::CRC32 (0.94), CLBG::Spectralnorm (0.94), Hash::SHA256 (0.96), CLBG::Mandelbrot (0.97), Sort::Self (0.99).
+
+### Re-bench of all 50 tests
+
+- **Compiler:** zane-lang/compiler at 633ca32 (#375's head, which contains
+  `main` at 1062c7d). Built with `ZANE_PREFETCH=0`. The binary is
+  byte-identical to the default build, and to one built with
+  `ZANE_INTERLEAVE=0` too: neither pass finds a loop it applies to in this
+  port.
+- **Port:** `zane-perf` at 354c5f2 with core v0.10.
+- **C:** the `c/` prod build.
+- **Method:** three runs of all 50 tests on each side, alternating Zane and C,
+  back to back in one container (4 vCPU). Each figure is the median of a
+  test's three `run.js` times. All 50 checksums were OK in every run on both
+  sides.
+
+| Test | C (s) | Zane (s) | Zane / C | Earlier Zane / C |
+| --- | --- | --- | --- | --- |
+| Binarytrees::Obj | 1.912 | 0.323 | 0.17 | below 1.2 |
+| Binarytrees::Arena | 0.412 | 0.447 | 1.08 | 1.24 |
+| Brainfuck::Array | 1.324 | 2.154 | 1.63 | 1.73 |
+| Brainfuck::Recursion | 1.541 | 2.388 | 1.55 | 1.84 |
+| Matmul::Single | 4.463 | 4.817 | 1.08 | below 1.2 |
+| Matmul::T4 | 1.274 | 1.493 | 1.17 | below 1.2 |
+| Matmul::T8 | 1.224 | 1.334 | 1.09 | below 1.2 |
+| Matmul::T16 | 1.110 | 1.267 | 1.14 | below 1.2 |
+| Base64::Encode | 0.105 | 0.128 | 1.22 | 3.80 |
+| Base64::Decode | 0.120 | 0.126 | 1.05 | 2.62 |
+| Json::Generate | 0.274 | 0.244 | 0.89 | below 1.2 |
+| Json::ParseDom | 0.086 | 0.104 | 1.21 | 1.48 |
+| Json::ParseMapping | 0.235 | 0.273 | 1.16 | 1.50 |
+| CSV::Parse | 2.202 | 1.924 | 0.87 | below 1.2 |
+| Etc::Sieve | 2.439 | 2.270 | 0.93 | below 1.2 |
+| Etc::TextRaytracer | 0.933 | 1.045 | 1.12 | below 1.2 |
+| Etc::NeuralNet | 0.921 | 1.228 | 1.33 | 1.28 |
+| Etc::CacheSimulation | 0.752 | 1.114 | 1.48 | 2.79 |
+| Etc::GameOfLife | 1.353 | 0.819 | 0.61 | below 1.2 |
+| Etc::Words | 1.998 | 0.988 | 0.49 | below 1.2 |
+| Etc::LogParser | 0.487 | 0.621 | 1.28 | below 1.2 |
+| Template::Regex | 2.250 | 1.504 | 0.67 | 1.92 |
+| Template::Parse | 1.482 | 1.366 | 0.92 | 1.51 |
+| Sort::Quick | 1.302 | 1.439 | 1.11 | 1.22 |
+| Sort::Merge | 1.496 | 1.704 | 1.14 | below 1.2 |
+| Sort::Self | 1.991 | 1.975 | 0.99 | below 1.2 |
+| Graph::BFS | 0.891 | 1.093 | 1.23 | 1.26 |
+| Graph::DFS | 0.985 | 1.081 | 1.10 | 1.22 |
+| Graph::AStar | 1.207 | 1.218 | 1.01 | 2.96 |
+| Hash::SHA256 | 0.806 | 0.776 | 0.96 | below 1.2 |
+| Hash::CRC32 | 1.038 | 0.972 | 0.94 | below 1.2 |
+| Calculator::Ast | 1.061 | 0.861 | 0.81 | below 1.2 |
+| Calculator::Interpreter | 1.493 | 0.724 | 0.48 | below 1.2 |
+| Maze::Generator | 0.526 | 0.411 | 0.78 | below 1.2 |
+| Maze::BFS | 0.507 | 0.417 | 0.82 | 1.31 |
+| Maze::AStar | 0.929 | 0.625 | 0.67 | 1.58 |
+| CLBG::Fannkuchredux | 1.277 | 1.350 | 1.06 | below 1.2 |
+| CLBG::Mandelbrot | 0.870 | 0.845 | 0.97 | below 1.2 |
+| CLBG::Nbody | 0.903 | 0.920 | 1.02 | below 1.2 |
+| CLBG::Spectralnorm | 0.930 | 0.875 | 0.94 | below 1.2 |
+| Compress::BWTEncode | 0.653 | 0.789 | 1.21 | 2.36 |
+| Compress::BWTDecode | 1.056 | 1.242 | 1.18 | 1.60 |
+| Compress::HuffEncode | 0.879 | 0.663 | 0.75 | below 1.2 |
+| Compress::HuffDecode | 0.831 | 1.089 | 1.31 | 1.47 |
+| Compress::ArithEncode | 1.233 | 1.322 | 1.07 | below 1.2 |
+| Compress::ArithDecode | 0.975 | 1.044 | 1.07 | below 1.2 |
+| Compress::LZWEncode | 1.326 | 1.799 | 1.36 | 2.26 |
+| Compress::LZWDecode | 0.866 | 0.687 | 0.79 | 1.63 |
+| Distance::Jaro | 1.101 | 0.635 | 0.58 | below 1.2 |
+| Distance::NGram | 1.717 | 0.572 | 0.33 | below 1.2 |
+
+### Valgrind does not run four tests correctly
+
+Under Valgrind (`--tool=none`, Callgrind or Memcheck), the Zane build
+misbehaves on four tests that are OK natively:
+
+- **Maze::Generator, Maze::BFS, Maze::AStar:** crash with SIGSEGV in
+  `maze$generate`. Callgrind stops at about 593M instructions after
+  `index out of range`.
+- **Graph::BFS:** finishes, but with checksum 48960 instead of 50400.
+
+Builds from before #375 behave the same. Earlier Callgrind numbers for these
+four tests are therefore unreliable, including the earlier Graph::BFS
+"1.03G vs 0.58G". The cause is not yet known. Memcheck reports writes into the
+ranges the runtime reserves and commits from its fault handler
+(`runtime/region.c`).
 
 ## Recommended fix order
 
@@ -368,6 +460,7 @@ and the repro under its issue is the test to make pass first.
    fills and Binarytrees::Arena.
 4. **Read list handles once before loops that push or call (R5).** Covers
    both Brainfuck tests at 1.7–1.8×, HuffDecode, NeuralNet and Arith.
-5. **Add `while` to core (B3, R6).** Covers Sort::Quick and any future scan loop.
+5. ~~**Add `while` to core (B3, R6).**~~ Done in the compiler instead
+   (zane-lang/compiler#375): searches are no longer split by IRCE.
 6. **Look into the Json gap.** Same instruction count, 50 ms slower: check
    whether the clang build of yyjson inside the module is the difference.

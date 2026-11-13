@@ -1,0 +1,51 @@
+package repro;
+import core$;
+// LZWEncode's inner step: a fresh string is held in a local, then assigned
+// to an older local, and nothing reads the fresh one again. C frees the old
+// pointer and keeps the new one. Forms 1 and 2 copy `combined` into
+// `current` (zane_copy plus a relocation) before the scope frees it; form 3
+// makes the result where `current` lives. Callgrind, v0.35, 1000000 rounds:
+// form 1 672.3M, form 2 674.3M, form 3 301.3M instructions.
+//   form 1: combined String=current+next; current=combined;
+//   form 2: the same assignment inside an if, as LZWEncode writes it
+//   form 3: current=current+next;
+Int run(rounds Int, form Int) {
+  next String=String("b");
+  current String=String("a");
+  total Int=Int(0);
+  size Int=Int(1);
+  i Int=Int(1);
+  i!to(rounds) {
+    if(form==1) {
+      combined String=current+next;
+      current=combined;
+    }
+    if(form==2) {
+      combined String=current+next;
+      if(i>0) {
+        current=combined;
+      }
+    }
+    if(form==3) {
+      current=current+next;
+    }
+    size=size+1;
+    if(size>=32) {
+      total=total+size;
+      size=Int(1);
+      current=String("a");
+    }
+  }
+  if(current==String("")) {
+    return Int(0);
+  }
+  return total+size;
+}
+Unit main() {
+  console Console(@program$console);
+  runtime Runtime(@program$runtime);
+  rounds Int=runtime:arguments()[Int(1)]:parseInt() ? e { return Unit(); }
+  form Int=runtime:arguments()[Int(2)]:parseInt() ? e { return Unit(); }
+  console!print(String(run(rounds, form)));
+  return Unit();
+}

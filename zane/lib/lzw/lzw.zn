@@ -17,17 +17,21 @@ Encoded encode(input String) {
     return Encoded(String(""));
   }
   dict StringMap=StringMap(length(input)*2+1024);
+  // The 256 one-byte strings, made once: C builds each step's next
+  // character in a two-byte stack buffer rather than allocating it.
+  characters List<String> = List(String);
   i Int=Int(0);
   i!to(Int(255)) {
-    dict!put(character(i), i);
+    characters!push(character(i));
+    dict!put(characters[i+1], i);
   }
   next Int=Int(256);
   out Buffer=buffer(Int(0), Int(0));
-  current String=character(byte(inputBytes, Int(1)));
+  current String=characters[byte(inputBytes, Int(1))+1];
   j Int=Int(2);
   j!to(length(input)) {
-    nextChar String=character(byte(inputBytes, j));
-    combined String=current+nextChar;
+    nextChar Int=byte(inputBytes, j)+1;
+    combined String=current+characters[nextChar];
     found Bool=if(dict:has(combined)) {
       current=combined;
     }
@@ -39,7 +43,7 @@ Encoded encode(input String) {
         dict!put(combined, next);
         next=next+1;
       }
-      current=nextChar;
+      current=characters[nextChar];
     }
   }
   code Int=dict:get(current);

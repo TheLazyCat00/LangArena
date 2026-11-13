@@ -71,22 +71,37 @@ type StringMap = struct {
   keys List<String>;
   values List<Int>;
   entries Int;
+  shift Int;
+}
+
+// The table has a power of two slots, at least capacity, so a slot comes
+// from the top bits of a Fibonacci hash and probing wraps without a divide.
+Int tableBits(capacity Int) {
+  bits Int=Int(1);
+  bits!to(Int(62)) {
+    if(shiftLeft(Int(1), bits)>=capacity) {
+      return bits;
+    }
+  }
+  return Int(62);
 }
 
 StringMap(capacity Int) => init {
-  slots=filled(capacity, Int(0));
+  slots=filled(shiftLeft(Int(1), tableBits(capacity)), Int(0));
   keys=List(String);
   values=List(Int);
   entries=Int(0);
+  shift=Int(64)-tableBits(capacity);
 }
 
 // The slot that holds key, or the empty slot where it belongs; 0 if full.
-// The djb2 hash is mixed, as IntMap mixes its keys: keys that differ in
-// their last characters, such as "item_1" and "item_2", hash to adjacent
-// values, and linear probing would make one long cluster of them.
+// The djb2 hash is mixed by a Fibonacci multiply whose top bits pick the
+// slot: keys that differ in their last characters, such as "item_1" and
+// "item_2", hash to nearby values, and their low bits alone would make
+// long clusters for linear probing.
 Int slot(this StringMap, key String) {
   capacity Int=this.slots:size();
-  index Int=rem(u32(hash(key)*2654435761), capacity)+1;
+  index Int=shiftRightLogical(hash(key)*(Int(0)-Int(7046029254386353131)), this.shift)+1;
   probe Int=Int(1);
   probe!to(capacity) {
     entry Int=this.slots[index];
@@ -96,7 +111,10 @@ Int slot(this StringMap, key String) {
     if(this.keys[entry]==key) {
       return index;
     }
-    index=rem(index, capacity)+1;
+    index=index+1;
+    if(index>capacity) {
+      index=Int(1);
+    }
   }
   return Int(0);
 }

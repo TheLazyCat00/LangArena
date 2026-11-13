@@ -214,15 +214,16 @@ void arena_regex_free(arena_regex *r) {
 typedef struct { size_t rm_so, rm_eo; } arena_span;
 static bool next_match(const arena_regex *regex, const char *text, size_t length,
                        size_t offset, arena_span *match) {
-  if (pcre2_match(regex->code, (PCRE2_SPTR)text, length, offset, 0, regex->match, NULL) < 0)
+  if (pcre2_jit_match(regex->code, (PCRE2_SPTR)text, length, offset, 0, regex->match, NULL) < 0)
     return false;
   PCRE2_SIZE *ovector = pcre2_get_ovector_pointer(regex->match);
   match->rm_so = ovector[0];
   match->rm_eo = ovector[1];
   return true;
 }
-int64_t arena_regex_count(const arena_regex *regex, const char *text) {
-  size_t length = strlen(text), offset = 0;
+int64_t arena_regex_count(const arena_regex *regex, zane_bytes subject) {
+  const char *text = (const char *)subject.data;
+  size_t length = subject.size, offset = 0;
   int64_t count = 0;
   arena_span match;
   while (offset < length && next_match(regex, text, length, offset, &match)) {
@@ -233,10 +234,11 @@ int64_t arena_regex_count(const arena_regex *regex, const char *text) {
 }
 typedef struct { int64_t start, end; } arena_range;
 struct arena_matches { arena_range *ranges; size_t count; };
-arena_matches *arena_regex_matches(const arena_regex *regex, const char *text) {
+arena_matches *arena_regex_matches(const arena_regex *regex, zane_bytes subject) {
   arena_matches *result = calloc(1, sizeof(*result));
   if (!result) die("out of memory");
-  size_t length = strlen(text), offset = 0, capacity = 0;
+  const char *text = (const char *)subject.data;
+  size_t length = subject.size, offset = 0, capacity = 0;
   arena_span match;
   while (offset < length && next_match(regex, text, length, offset, &match)) {
     if (result->count == capacity) {

@@ -67,12 +67,12 @@ double arena_csv_get(const arena_csv *csv, int64_t row, int64_t column);
 typedef struct arena_regex arena_regex;
 arena_regex *arena_regex_new(const char *pattern, bool insensitive);
 void arena_regex_free(arena_regex *regex);
-int64_t arena_regex_count(const arena_regex *regex, const char *text);
+int64_t arena_regex_count(const arena_regex *regex, zane_bytes text);
 
 int64_t arena_stop(arena_host *host, int64_t started);
 
 typedef struct arena_matches arena_matches;
-arena_matches *arena_regex_matches(const arena_regex *regex, const char *text);
+arena_matches *arena_regex_matches(const arena_regex *regex, zane_bytes text);
 void arena_matches_free(arena_matches *matches);
 int64_t arena_matches_count(const arena_matches *matches);
 int64_t arena_matches_get(const arena_matches *matches, int64_t index, bool end);

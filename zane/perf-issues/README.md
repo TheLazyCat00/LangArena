@@ -1,34 +1,40 @@
 # Zane vs C: performance issues
 
-As of 2026-11-13, measured against `zane-perf` at 354c5f2 with zane-lang/compiler
-at 633ca32 and core v0.10. The same list is kept as a Claude Doc, with a chart
-of all 50 ratios from the 2026-11-13 re-bench:
+As of 2026-11-13 (second re-bench), measured against `zane-perf` at e004415
+with zane-lang/compiler v0.35 (6ce1542) and core v0.10. The Claude Doc below
+still shows the first 2026-11-13 re-bench (354c5f2, 633ca32):
 https://claude.ai/artifact/RJcMtraHukcaWwMF9kPPPx
 
 ## Summary
 
-Zane runs at a geomean of 0.94× C across the 50 tests. It was 1.17× at the
-start of the compiler fixes for these issues and 1.42× at the start of
-`zane-perf` (re-bench below). 11 tests are still at 1.2× or slower. The extra
-work a fair port could remove has been removed. What is left comes from six
-compiler/runtime mechanisms (R1–R6) and three core gaps (B1–B3), listed below
+Zane runs at a geomean of 0.93× C across the 50 tests (re-bench below). It
+was 0.94× at the first re-bench of 2026-11-13, 1.17× at the start of the
+compiler fixes for these issues and 1.42× at the start of `zane-perf`. 10
+tests are at 1.2× or slower. Three more port fixes (LogParser,
+CacheSimulation, LZWEncode) removed extra work the port did. What is left
+comes from compiler/runtime mechanisms (R1–R8) and the Json gap, listed below
 with repros in [`repros/`](repros).
 
-Of the 11 slow tests:
+Of the 10 slow tests:
 
-- **Loop reloads (R5):** the two Brainfuck tests, NeuralNet and HuffDecode.
-- **String copies (R1):** CacheSimulation, LZWEncode and Base64::Encode.
-- **List fills (R2/B1):** Graph::BFS and BWTEncode.
-- **The Json gap (open):** Json::ParseDom.
-- **Not yet profiled:** LogParser.
+- **`command` not inlined (R8) and per-op dispatch:** the two Brainfuck tests.
+- **Data-dependent bounds checks (R5 notes):** NeuralNet, HuffDecode.
+- **Assignment copies (R7):** LZWEncode. A prototype brings it to C's speed.
+- **List fills and growth (R2/R3):** BWTEncode.
+- **The Json gap (open):** Json::ParseDom, Json::ParseMapping.
+- **Moved without a code change:** Graph::DFS (1.10× in the previous run)
+  and Matmul::T4 (1.17× before).
 
 ## Port fixes on zane-perf (class a)
 
-Thirteen commits, newest first, make the port do the same work as C; each kept
+Sixteen commits, newest first, make the port do the same work as C; each kept
 all 50 checksums OK. Times are `run.js` wall-clock on the measuring machine.
 
 | Commit | Test | Port did extra work | Before → after | C |
 | --- | --- | --- | --- | --- |
+| e004415 | Compress::LZWEncode | a foreign `character()` call allocated a one-byte string for every input byte (20.4M per run); C builds it in a two-byte stack buffer. The 256 strings are now made once per encode | 28.5G → 25.4G instructions; 1.80 → 1.68 s | 1.373 s |
+| cff5968 | Etc::CacheSimulation (every `StringMap`) | the slot was the mixed hash modulo the table size, which reads only its low bits: the `item_N` keys clustered, 3.7 probes per lookup at load 0.5 where 1.1 is expected, and a divide per probe. uthash uses a power-of-two table. Now a power-of-two table, the top bits of a 64-bit Fibonacci multiply, and no divide | 1.114 → 0.766 s | 0.692 s |
+| 835f952 | Etc::LogParser (and Template::Regex's matches) | the regex verbs took the subject as `const char *`, so every call copied the 7.15 MB log into a fresh NUL-terminated block and ran `strlen` over it, 156 times per run; C passes the pointer and length. Now `zane_bytes`, and `pcre2_jit_match` as in C | 0.621 → 0.522 s | 0.506 s |
 | 354c5f2 | Hash::SHA256 | eight running hashes in a heap List; C uses `uint32_t[8]` on the stack. Now `Array<Int, 8>`: unrolled, no bounds checks | 2.190 → 1.1 s | 1.585 s |
 | d92d929 | Compress::HuffEncode | a non-inlined `BitWriter.bit` call per bit, state in fields; C keeps it in locals | 1.616 → 1.03 s | 1.295 s |
 | ea1c1dd, c9aa3f7 | Maze::Generator / BFS / AStar | each cell's neighbours in a List of its own, one extra dependent load per visit; C has `neighbors[4]` inline. Now `Array<I32, 4>` in the cell | 1.277 → 0.66 s / 1.373 → 0.81 s / 3.526 → 2.6 s | 0.865 / 0.566 / 1.250 s |
@@ -45,8 +51,9 @@ all 50 checksums OK. Times are `run.js` wall-clock on the measuring machine.
 Tried and reverted: a Brainfuck `command` rewritten as an elif chain (5% slower
 on Recursion despite fewer instructions), a `frequencies(Buffer)` overload for
 BWTDecode (no change), quicksort scans with the index as the loop variable (1%
-fewer instructions, see R6), and a local copy of the Huffman node list in
-decode (no change, see R5).
+fewer instructions, see R6), a local copy of the Huffman node list in
+decode (no change, see R5), and Graph::BFS with a queue of `vertices` slots
+filled up front and written by index, as C does (1.23×, no change).
 
 ## Compiler and runtime issues (class c)
 
@@ -256,9 +263,9 @@ runtime asks for. Repros build with `zane build` in their directory.
   | Compress::ArithEncode | 10.49G | 10.49G | |
   | Compress::ArithDecode | 14.04G | 14.04G | |
 
-  Still open: inlining `command` and `bit` is left alone, since their size
-  comes from the port's C `Buffer`. Whether Brainfuck's and NeuralNet's
-  second checks can be removed has not been investigated.
+  Still open: `command` and `bit` are not inlined. For `command`, R8 shows
+  the C `Buffer` is not the reason. NeuralNet has no second checks; see
+  "Findings for the other slow tests" below.
 
 ### R6. A short counted loop with an early exit pays a range-check prologue on every entry
 
@@ -280,6 +287,94 @@ runtime asks for. Repros build with `zane build` in their directory.
   11.58G → 8.37G instructions for the whole run (C: 4.96G); the repro 164.8M →
   122.4M. Every other LangArena test and `tests/perf` program is within 0.1%.
   The port is unchanged.
+
+### R7. Assigning a held local at its last read copies it
+
+- **Mechanism.** In `combined String=current+nextChar; ... current=combined;`
+  the fresh string is held in its scope's slot, and the assignment copies it
+  (`zane_copy`) into `current`, which relocates it into `current`'s region,
+  before the scope frees the original. Nothing reads `combined` after the
+  assignment. Only a `return` moves a held local
+  ([zane-lang/compiler#364](https://github.com/zane-lang/compiler/pull/364)'s
+  `returned_moves`). Writing `current=current+nextChar` instead makes the
+  result where `current` lives.
+- **Measured.** [`repros/string-assign`](repros/string-assign),
+  `out/host/repro 1000000 N`, Callgrind on v0.35: form 1 (`combined=…;
+  current=combined`) 672.3M instructions, form 2 (the same inside an `if`, as
+  LZWEncode writes it) 674.3M, form 3 (`current=current+next`) 301.3M.
+  In Compress::LZWEncode it is one assignment per input byte (20.4M per run):
+  `zane_overwrite` 8.47G, `zane_copy` 2.36G and `zane_alloc_held` 1.7G of the
+  run's 25.4G instructions.
+- **Hits.** Compress::LZWEncode. Any loop that builds a value in a local and
+  then stores it into an older one.
+- **Fix direction.** When a held local's last read in its scope copies it
+  into another place, move it there (`Take`, as a return does), and when that
+  move is the only way it leaves, hold it as a plain `let` so it is made
+  where it ends up. LZWEncode's `found`/`found:else()` reads `combined` in the
+  `else` branch, which comes after the `then` branch in the lowered code, so
+  the analysis has to treat the two branches as exclusive.
+- **Prototype** (not a PR): [`repros/string-assign/compiler-prototype.patch`](repros/string-assign/compiler-prototype.patch),
+  `Regions.assigned_moves` on compiler 6ce1542, which handles straight-line
+  code, `if` bodies and expansions, not loops or exclusive branches. The
+  repro's forms 1 and 2 drop to 296.2M and 299.2M instructions, all 50
+  `test.js` and `run.js` checksums stay OK, and LZWEncode with its hit branch
+  written after the miss branch runs at C's speed: 1.26–1.33 s against C's
+  1.28–1.36 s, three runs each. Without that reorder the prototype does not
+  apply to LZWEncode, and the reorder alone changes nothing on v0.35.
+
+### R8. Brainfuck's `command` is not inlined: three call sites, not the C Buffer
+
+This corrects R5's note that `command` stays out of line because the port's C
+`Buffer` growth is inlined into it.
+
+- **Mechanism.** LLVM's inliner reports `command` "too costly to inline
+  (cost=315, threshold=225)" at each of its three call sites: one in
+  `runArray` and two in `runOps`. A function with one call site gets LLVM's
+  large one-caller bonus; this one has three. Array and Recursion share one
+  `command`, where C's two files each have their own tape functions with one
+  caller each. `runOps` has two call sites because codegen emits its loop
+  twice, for a count of at least 16 and for a smaller one
+  (`Emit.versioned`), which duplicates every call in the body.
+- **The Buffer is not the cause.** With the tape as a native `List<Int>`,
+  the remark and the cost are the same, and the times are no better
+  (Array 1.87×, Recursion 1.60×).
+- **Measured** (experiments, not committed, since inlining `command` was
+  decided to be left alone; this is the evidence to revisit that):
+  - Giving `runArray` its own copy of `command` gets it inlined.
+    Brainfuck::Array 2.24 s → 1.85 s (1.73× → 1.40× C). Recursion is
+    unchanged.
+  - Also skipping the two loop copies when the loop body calls a function
+    (an env-gated compiler change) inlines `command` into `runOps` too.
+    Recursion 2.40 s → 2.25 s, but Array went 1.85 s → 2.0 s in the same
+    build, so this is not a clear win as it stands.
+- **Fix direction.** Port: one `command` per runner, as C has. Compiler: don't
+  emit a loop twice when its body calls a function that is not inlined yet,
+  or emit it twice only after inlining.
+
+### Findings for the other slow tests (2026-11-13, v0.35)
+
+- **Etc::NeuralNet (R5's "second checks").** There are none. Each
+  data-dependent index has one check: `synapses[incoming[j]]` and
+  `neurons[synapse.source]`, where C follows pointers. `update`'s loop is 22
+  instructions per synapse, of which the two checks and the 1-based index
+  arithmetic are about 8. A compiler cannot drop them without knowing the
+  stored indices are in range. The loop is also emitted twice (`Emit.versioned`),
+  with identical bodies.
+- **Compress::HuffDecode.** #372 keeps the node list in registers now. A bit
+  costs about 22 instructions: two index checks, one of which re-checks
+  the `current` the previous bit already checked (LLVM does not carry the
+  range across the back edge), a leaf test that reads `left` and `right`
+  where C reads one `is_leaf` byte, and the output `Buffer`'s capacity test
+  per byte, where C writes into a block allocated at full size.
+- **Graph::BFS.** A queue of `vertices` slots filled up front and written by
+  index, as C does, gave no gain (1.23×), so it is not committed. Not
+  profiled further, since Callgrind is unreliable here.
+- **List fills (B1).** `zane-perf-list-fill` (872472e) with core `main`
+  (576949e) built directly with `zanec`: BWTEncode, BWTDecode, Graph::BFS,
+  Graph::AStar and Maze::BFS all within noise of `zane-perf`. #366 already
+  delivers B1's gain, so a core release with #15 is not a performance lever.
+- **Base64::Encode.** 1.07× in this session's runs (23 ms absolute in the
+  earlier run): noise at this size.
 
 ### Open question: Json is slower at equal instruction counts
 
@@ -337,94 +432,90 @@ now removes (zane-lang/compiler#375); the counter left over is one register.
 
 ## Remaining slow tests
 
-Every test at 1.2× C or worse in the re-bench below. None has extra work left
-that a fair port could remove. Instruction counts are Callgrind totals for the
-whole process at full size, input setup included.
+Every test at 1.2× C or worse in the re-bench below. Instruction counts are
+Callgrind totals for the whole process at full size, input setup included.
 
 | Test | C (s) | Zane (s) | Zane / C | Issues | What the profile shows |
 | --- | --- | --- | --- | --- | --- |
-| Brainfuck::Array | 1.324 | 2.154 | 1.63 | R5 | 33.3G vs 13.4G instructions; count reloads, double bounds check, `command` not inlined |
-| Brainfuck::Recursion | 1.541 | 2.388 | 1.55 | R5 | 35.6G vs 18.6G instructions; `command` dispatch not inlined |
-| Etc::CacheSimulation | 0.752 | 1.114 | 1.48 | R1 | 17.4G vs 11.8G instructions; allocations, copies and promotes per access |
-| Compress::LZWEncode | 1.326 | 1.799 | 1.36 | R1 | 28.4G vs 18.1G instructions; a `character()` + concat per input byte |
-| Etc::NeuralNet | 0.921 | 1.228 | 1.33 | R5 | 23.8G vs 18.2G instructions; same layout as C, bounds checks on index lists |
-| Compress::HuffDecode | 0.831 | 1.089 | 1.31 | R5, R2 | 27.7G vs 15.8G instructions; node list reloaded per bit, output pushed per byte |
-| Etc::LogParser | 0.487 | 0.621 | 1.28 | not yet known | new at 1.2× or worse (below 1.2× in the earlier run); not profiled |
-| Graph::BFS | 0.891 | 1.093 | 1.23 | R2, B1, R5 | 7.84G vs 6.77G instructions; the `visited` fill, plus pushes into a growing queue |
-| Base64::Encode | 0.105 | 0.128 | 1.22 | R1 | 1.65G vs 1.64G instructions, equal; the gap is 23 ms |
-| Json::ParseDom | 0.086 | 0.104 | 1.21 | open | 2.25G vs 1.72G instructions for the whole process (see the open question) |
-| Compress::BWTEncode | 0.653 | 0.789 | 1.21 | R2, B1, R3 | 10.8G vs 6.0G instructions; fills, list growth |
+| Brainfuck::Array | 1.302 | 2.175 | 1.67 | R8 | 33.3G vs 13.3G instructions; `command` called once per command (three call sites, cost 315 > 225); one `command` per runner gives 1.40× |
+| Brainfuck::Recursion | 1.479 | 2.408 | 1.63 | R8, R5 | 35.6G vs 18.6G instructions; `command` not inlined (its loop is emitted twice); a variant match, then the op switch, per op |
+| Json::ParseDom | 0.079 | 0.112 | 1.42 | open | 2.25G vs 1.72G instructions for the whole process (see the open question) |
+| Json::ParseMapping | 0.212 | 0.299 | 1.41 | open | see the open question |
+| Graph::DFS | 1.067 | 1.480 | 1.39 | R5 | 1.10× in the previous run; not re-profiled |
+| Etc::NeuralNet | 0.962 | 1.213 | 1.26 | R5 notes | 23.8G vs 18.2G instructions; one check per data-dependent index where C follows pointers |
+| Compress::BWTEncode | 0.627 | 0.787 | 1.26 | R2, R3 | 10.8G vs 6.0G instructions; fills, list growth; the list-fill branch does not change it |
+| Matmul::T4 | 1.098 | 1.359 | 1.24 | none known | 1.17× in the previous run; threaded, noisy |
+| Compress::HuffDecode | 0.880 | 1.075 | 1.22 | R5 notes | 27.7G vs 15.8G instructions; two checks per bit (one repeated), a two-field leaf test, the push capacity test |
+| Compress::LZWEncode | 1.373 | 1.677 | 1.22 | R7 | 25.4G vs 18.1G instructions; one assignment copy per input byte; the R7 prototype reaches C's speed |
 
-Etc::LogParser is new to this list: the earlier run had it below 1.2×.
-
-Faster than C now: Binarytrees::Obj (0.17), Distance::NGram (0.33), Calculator::Interpreter (0.48), Etc::Words (0.49), Distance::Jaro (0.58), Etc::GameOfLife (0.61), Template::Regex (0.67), Maze::AStar (0.67), Compress::HuffEncode (0.75), Maze::Generator (0.78), Compress::LZWDecode (0.79), Calculator::Ast (0.81), Maze::BFS (0.82), CSV::Parse (0.87), Json::Generate (0.89), Template::Parse (0.92), Etc::Sieve (0.93), Hash::CRC32 (0.94), CLBG::Spectralnorm (0.94), Hash::SHA256 (0.96), CLBG::Mandelbrot (0.97), Sort::Self (0.99).
+Faster than C now: Binarytrees::Obj (0.17), Calculator::Interpreter (0.35), Distance::NGram (0.36), Etc::Words (0.52), Distance::Jaro (0.58), Etc::GameOfLife (0.58), Maze::AStar (0.68), Template::Parse (0.71), Json::Generate (0.74), Compress::HuffEncode (0.77), Maze::Generator (0.77), Template::Regex (0.81), Calculator::Ast (0.84), Compress::LZWDecode (0.84), Maze::BFS (0.85), Etc::Sieve (0.91), Graph::AStar (0.91), Hash::CRC32 (0.92), Hash::SHA256 (0.92), Sort::Self (0.98), CLBG::Mandelbrot (0.99), CLBG::Nbody (0.99).
 
 ### Re-bench of all 50 tests
 
-- **Compiler:** zane-lang/compiler at 633ca32 (#375's head, which contains
-  `main` at 1062c7d). Built with `ZANE_PREFETCH=0`. The binary is
-  byte-identical to the default build, and to one built with
-  `ZANE_INTERLEAVE=0` too: neither pass finds a loop it applies to in this
-  port.
-- **Port:** `zane-perf` at 354c5f2 with core v0.10.
+- **Compiler:** zane-lang/compiler v0.35 (6ce1542, `main` with #375), the
+  release toolchain, default build.
+- **Port:** `zane-perf` at e004415 with core v0.10, its pin moved to v0.35
+  locally for the build.
 - **C:** the `c/` prod build.
-- **Method:** three runs of all 50 tests on each side, alternating Zane and C,
-  back to back in one container (4 vCPU). Each figure is the median of a
-  test's three `run.js` times. All 50 checksums were OK in every run on both
-  sides.
+- **Method:** three runs of all 50 tests on each side, alternating C and
+  Zane, back to back in one container (4 vCPU), with nothing else running.
+  Each figure is the median of a test's three `run.js` times. All 50
+  checksums were OK in every run on both sides. Run-to-run spread in this
+  container is several percent: Graph::DFS and the Matmul thread tests moved
+  most between the two re-benches, with no change to their code.
 
-| Test | C (s) | Zane (s) | Zane / C | Earlier Zane / C |
+| Test | C (s) | Zane (s) | Zane / C | Previous Zane / C |
 | --- | --- | --- | --- | --- |
-| Binarytrees::Obj | 1.912 | 0.323 | 0.17 | below 1.2 |
-| Binarytrees::Arena | 0.412 | 0.447 | 1.08 | 1.24 |
-| Brainfuck::Array | 1.324 | 2.154 | 1.63 | 1.73 |
-| Brainfuck::Recursion | 1.541 | 2.388 | 1.55 | 1.84 |
-| Matmul::Single | 4.463 | 4.817 | 1.08 | below 1.2 |
-| Matmul::T4 | 1.274 | 1.493 | 1.17 | below 1.2 |
-| Matmul::T8 | 1.224 | 1.334 | 1.09 | below 1.2 |
-| Matmul::T16 | 1.110 | 1.267 | 1.14 | below 1.2 |
-| Base64::Encode | 0.105 | 0.128 | 1.22 | 3.80 |
-| Base64::Decode | 0.120 | 0.126 | 1.05 | 2.62 |
-| Json::Generate | 0.274 | 0.244 | 0.89 | below 1.2 |
-| Json::ParseDom | 0.086 | 0.104 | 1.21 | 1.48 |
-| Json::ParseMapping | 0.235 | 0.273 | 1.16 | 1.50 |
-| CSV::Parse | 2.202 | 1.924 | 0.87 | below 1.2 |
-| Etc::Sieve | 2.439 | 2.270 | 0.93 | below 1.2 |
-| Etc::TextRaytracer | 0.933 | 1.045 | 1.12 | below 1.2 |
-| Etc::NeuralNet | 0.921 | 1.228 | 1.33 | 1.28 |
-| Etc::CacheSimulation | 0.752 | 1.114 | 1.48 | 2.79 |
-| Etc::GameOfLife | 1.353 | 0.819 | 0.61 | below 1.2 |
-| Etc::Words | 1.998 | 0.988 | 0.49 | below 1.2 |
-| Etc::LogParser | 0.487 | 0.621 | 1.28 | below 1.2 |
-| Template::Regex | 2.250 | 1.504 | 0.67 | 1.92 |
-| Template::Parse | 1.482 | 1.366 | 0.92 | 1.51 |
-| Sort::Quick | 1.302 | 1.439 | 1.11 | 1.22 |
-| Sort::Merge | 1.496 | 1.704 | 1.14 | below 1.2 |
-| Sort::Self | 1.991 | 1.975 | 0.99 | below 1.2 |
-| Graph::BFS | 0.891 | 1.093 | 1.23 | 1.26 |
-| Graph::DFS | 0.985 | 1.081 | 1.10 | 1.22 |
-| Graph::AStar | 1.207 | 1.218 | 1.01 | 2.96 |
-| Hash::SHA256 | 0.806 | 0.776 | 0.96 | below 1.2 |
-| Hash::CRC32 | 1.038 | 0.972 | 0.94 | below 1.2 |
-| Calculator::Ast | 1.061 | 0.861 | 0.81 | below 1.2 |
-| Calculator::Interpreter | 1.493 | 0.724 | 0.48 | below 1.2 |
-| Maze::Generator | 0.526 | 0.411 | 0.78 | below 1.2 |
-| Maze::BFS | 0.507 | 0.417 | 0.82 | 1.31 |
-| Maze::AStar | 0.929 | 0.625 | 0.67 | 1.58 |
-| CLBG::Fannkuchredux | 1.277 | 1.350 | 1.06 | below 1.2 |
-| CLBG::Mandelbrot | 0.870 | 0.845 | 0.97 | below 1.2 |
-| CLBG::Nbody | 0.903 | 0.920 | 1.02 | below 1.2 |
-| CLBG::Spectralnorm | 0.930 | 0.875 | 0.94 | below 1.2 |
-| Compress::BWTEncode | 0.653 | 0.789 | 1.21 | 2.36 |
-| Compress::BWTDecode | 1.056 | 1.242 | 1.18 | 1.60 |
-| Compress::HuffEncode | 0.879 | 0.663 | 0.75 | below 1.2 |
-| Compress::HuffDecode | 0.831 | 1.089 | 1.31 | 1.47 |
-| Compress::ArithEncode | 1.233 | 1.322 | 1.07 | below 1.2 |
-| Compress::ArithDecode | 0.975 | 1.044 | 1.07 | below 1.2 |
-| Compress::LZWEncode | 1.326 | 1.799 | 1.36 | 2.26 |
-| Compress::LZWDecode | 0.866 | 0.687 | 0.79 | 1.63 |
-| Distance::Jaro | 1.101 | 0.635 | 0.58 | below 1.2 |
-| Distance::NGram | 1.717 | 0.572 | 0.33 | below 1.2 |
+| Binarytrees::Obj | 2.570 | 0.428 | 0.17 | 0.17 |
+| Binarytrees::Arena | 0.518 | 0.531 | 1.03 | 1.08 |
+| Brainfuck::Array | 1.302 | 2.175 | 1.67 | 1.63 |
+| Brainfuck::Recursion | 1.479 | 2.408 | 1.63 | 1.55 |
+| Matmul::Single | 4.159 | 4.525 | 1.09 | 1.08 |
+| Matmul::T4 | 1.098 | 1.359 | 1.24 | 1.17 |
+| Matmul::T8 | 1.159 | 1.329 | 1.15 | 1.09 |
+| Matmul::T16 | 1.113 | 1.334 | 1.20 | 1.14 |
+| Base64::Encode | 0.106 | 0.122 | 1.15 | 1.22 |
+| Base64::Decode | 0.117 | 0.127 | 1.09 | 1.05 |
+| Json::Generate | 0.294 | 0.217 | 0.74 | 0.89 |
+| Json::ParseDom | 0.079 | 0.112 | 1.42 | 1.21 |
+| Json::ParseMapping | 0.212 | 0.299 | 1.41 | 1.16 |
+| CSV::Parse | 2.221 | 2.210 | 1.00 | 0.87 |
+| Etc::Sieve | 2.793 | 2.552 | 0.91 | 0.93 |
+| Etc::TextRaytracer | 0.888 | 0.995 | 1.12 | 1.12 |
+| Etc::NeuralNet | 0.962 | 1.213 | 1.26 | 1.33 |
+| Etc::CacheSimulation | 0.692 | 0.766 | 1.11 | 1.48 |
+| Etc::GameOfLife | 1.484 | 0.857 | 0.58 | 0.61 |
+| Etc::Words | 1.974 | 1.029 | 0.52 | 0.49 |
+| Etc::LogParser | 0.506 | 0.522 | 1.03 | 1.28 |
+| Template::Regex | 2.208 | 1.799 | 0.81 | 0.67 |
+| Template::Parse | 1.733 | 1.222 | 0.71 | 0.92 |
+| Sort::Quick | 1.310 | 1.444 | 1.10 | 1.11 |
+| Sort::Merge | 1.485 | 1.731 | 1.17 | 1.14 |
+| Sort::Self | 2.027 | 1.987 | 0.98 | 0.99 |
+| Graph::BFS | 1.351 | 1.472 | 1.09 | 1.23 |
+| Graph::DFS | 1.067 | 1.480 | 1.39 | 1.10 |
+| Graph::AStar | 1.111 | 1.007 | 0.91 | 1.01 |
+| Hash::SHA256 | 0.808 | 0.746 | 0.92 | 0.96 |
+| Hash::CRC32 | 1.042 | 0.960 | 0.92 | 0.94 |
+| Calculator::Ast | 1.025 | 0.863 | 0.84 | 0.81 |
+| Calculator::Interpreter | 1.831 | 0.650 | 0.35 | 0.48 |
+| Maze::Generator | 0.761 | 0.585 | 0.77 | 0.78 |
+| Maze::BFS | 0.533 | 0.452 | 0.85 | 0.82 |
+| Maze::AStar | 1.578 | 1.067 | 0.68 | 0.67 |
+| CLBG::Fannkuchredux | 1.272 | 1.320 | 1.04 | 1.06 |
+| CLBG::Mandelbrot | 0.850 | 0.842 | 0.99 | 0.97 |
+| CLBG::Nbody | 0.913 | 0.908 | 0.99 | 1.02 |
+| CLBG::Spectralnorm | 0.938 | 0.940 | 1.00 | 0.94 |
+| Compress::BWTEncode | 0.627 | 0.787 | 1.26 | 1.21 |
+| Compress::BWTDecode | 1.064 | 1.209 | 1.14 | 1.18 |
+| Compress::HuffEncode | 0.854 | 0.659 | 0.77 | 0.75 |
+| Compress::HuffDecode | 0.880 | 1.075 | 1.22 | 1.31 |
+| Compress::ArithEncode | 1.243 | 1.306 | 1.05 | 1.07 |
+| Compress::ArithDecode | 0.977 | 1.033 | 1.06 | 1.07 |
+| Compress::LZWEncode | 1.373 | 1.677 | 1.22 | 1.36 |
+| Compress::LZWDecode | 0.892 | 0.753 | 0.84 | 0.79 |
+| Distance::Jaro | 1.096 | 0.631 | 0.58 | 0.58 |
+| Distance::NGram | 1.691 | 0.615 | 0.36 | 0.33 |
 
 ### Valgrind ran three tests wrong (fixed)
 
@@ -485,3 +576,9 @@ and the repro under its issue is the test to make pass first.
    (zane-lang/compiler#375): searches are no longer split by IRCE.
 6. **Look into the Json gap.** Same instruction count, 50 ms slower: check
    whether the clang build of yyjson inside the module is the difference.
+7. **Move a held local at its last read (R7).** LZWEncode at 1.22×; the
+   prototype brings it to C's speed once the if/else branches are treated
+   as exclusive.
+8. **Get Brainfuck's `command` inlined (R8).** One `command` per runner in
+   the port (Array 1.67× → about 1.40×), and a loop that calls emitted once
+   rather than twice for Recursion.

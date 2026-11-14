@@ -37,6 +37,32 @@ Unit command(this Tape, op Int) mut {
   return Unit();
 }
 
+// runArray's own copy of command. As in C, where each runner has its own
+// tape functions, each copy then has one caller, which LLVM inlines; a
+// shared command has three call sites and stays a call per command.
+Unit arrayCommand(this Tape, op Int) mut {
+  value Int=this.bytes:get(this.position);
+  if(op==43) {
+    this.bytes!set(this.position, rem(value+1, Int(256)));
+  }
+  if(op==45) {
+    this.bytes!set(this.position, rem(value+255, Int(256)));
+  }
+  if(op==62) {
+    this.position=this.position+1;
+    if(this.position>this.bytes:size()) {
+      this.bytes!push(Int(0));
+    }
+  }
+  if(op==60) {
+    this.position=max(Int(1), this.position-1);
+  }
+  if(op==46) {
+    this.result=u32(this.result*4+value);
+  }
+  return Unit();
+}
+
 type Op = #variant {
   command Int;
   loop ListRef<Op>;
@@ -149,7 +175,7 @@ Int runArray(source String) {
       }
     }
     bracket:else() {
-      tape!command(c);
+      tape!arrayCommand(c);
     }
     pc=pc+1;
   }

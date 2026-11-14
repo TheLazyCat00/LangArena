@@ -1,10 +1,11 @@
-// LD_PRELOAD sampler: SIGPROF every 100us of CPU time, records the PC; at exit
+// LD_PRELOAD sampler: SIGPROF every SAMPLER_US (default 50) microseconds of wall time, records the PC; at exit
 // writes "pc count" lines to $SAMPLER_OUT. Resolve with symbolize.py.
 #define _GNU_SOURCE
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <time.h>
 #include <ucontext.h>
 #include <stdint.h>
 #define N (1<<22)
@@ -18,5 +19,12 @@ static void done(void) {
 __attribute__((constructor)) static void start(void) {
   if(!getenv("SAMPLER_OUT")) return;
   struct sigaction a={0}; a.sa_sigaction=h; a.sa_flags=SA_SIGINFO|SA_RESTART; sigaction(SIGPROF,&a,0);
-  struct itimerval t={{0,100},{0,100}}; setitimer(ITIMER_PROF,&t,0); atexit(done);
+  /* A POSIX timer on CLOCK_MONOTONIC runs on high-resolution timers, unlike
+     ITIMER_PROF, which fires on the kernel's tick. SAMPLER_US sets the
+     period (default 50). Wall time: run the program pinned and alone. */
+  long us = getenv("SAMPLER_US") ? atol(getenv("SAMPLER_US")) : 50;
+  struct sigevent ev = {0}; ev.sigev_notify = SIGEV_SIGNAL; ev.sigev_signo = SIGPROF;
+  timer_t id; timer_create(CLOCK_MONOTONIC, &ev, &id);
+  struct itimerspec t = {{0, us * 1000}, {0, us * 1000}}; timer_settime(id, 0, &t, 0);
+  atexit(done);
 }

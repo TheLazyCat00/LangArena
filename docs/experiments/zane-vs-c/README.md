@@ -763,7 +763,61 @@ LZWEncode is then about 19% slower (`bench1.py 5`, median 1.31 s → 1.56 s),
 so this step's LZWEncode figure (0.95× C) was bought by the leak. The
 fixed build passes all 50 tests checked and unchecked.
 
+## Step 19: closing the gap with Goose, Calculator::Ast
+
+Step 18 left Calculator::Ast at 7.3× Goose. Sampling (`prof/`, now on a
+50 µs `CLOCK_MONOTONIC` timer, `SAMPLER_US`; `symbolize.py SAMPLES TOP
+FUNCTION` shows the hottest addresses in one function) put about a third
+of its time in copying, moving, allocating and freeing `Node`s and their
+name Strings, and in per-call frames. Goose's port allocates nothing per
+node: a node pool and names as slices of the input.
+
+`calculator$add` held a copy of its `node` (`copy Node=node`), then
+called `core$push`, which copied it again into the list; the caller's
+fresh node was held and dropped around the call. Compiler
+zane-lang/compiler `perf/zane-vs-goose` d08d7d1, behind `ASSIGN_MOVES`
+(`ZANE_SINK_HOLDS=0` turns the new parts off):
+
+- A hold read once, as an argument of the next statement's call, is held
+  in that argument, the shape lowering gives a fresh argument, so a
+  callee that takes the parameter (`push`'s `.taken` copy) is given the
+  value itself.
+- `taken_params` counts a taken parameter as keeping a fresh argument,
+  and searches until it finds no more, so `add`, whose only use of
+  `node` is to pass a copy on to `push`, takes its parameter too.
+- `assigned_moves` runs again after `take_params`: a last-read copy
+  passed to a parameter the callee owns becomes a move, and a copy bound
+  by a `let` moves as an assigned one does.
+
+`add` now makes no copy and opens no scope: the caller's fresh `Node`
+goes into the list as it is. `expression`, `term` and `factor` shrink to
+about half (inlined `add`s, no holds).
+
+Baseline: zane-lang/compiler#377's head with the fix below (`pr`).
+`tri.py 3` on both, pinned, interleaved (`step19.json`): **Calculator::Ast
+0.831 → 0.421 s** (Goose/clang 0.115: 7.2× → 3.7×). All 50 tests pass
+checked (`ZANE_CHECK=1`) and unchecked; `just test-compiler` passes with
+and without the switch.
+
+Calculator::Interpreter looked 37% slower in the full run. It is not
+this change: alone, or with only the two Calculator tests, the two builds
+match; with the 32 tests before it the order flips (pr 0.658, new
+0.507). It moves between 0.48 and 0.80 s with the heap that the earlier
+tests leave, in either build. The others within ±10% are the usual
+placement swings (Sieve's baseline itself moved 1.93 → 2.45 between
+runs).
+
+**#377's merge-queue perf run failed.** Removing `ZANE_ONE_STOP` had kept
+the order that commit built an element check's blocks in (in-range block,
+then stop). Unoptimized builds keep that order in the machine code, so
+every check took a jump more: plain builds up to 4.25% more estimated
+cycles (particles; flips 3.05%). Main's order (4551d99) puts every plain row
+within 0.1% of main.
+
 ## What remains
+
+- Calculator::Ast is still 3.7× Goose: each name is a fresh String
+  (`slice`), and the Interpreter's lookups hash them again.
 
 - `FRAME_SHADOW`'s HuffDecode loss (step 16) is one register copy of a
   value read once per symbol; a store count does not tell such a slot

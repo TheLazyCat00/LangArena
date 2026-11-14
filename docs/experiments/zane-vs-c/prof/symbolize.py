@@ -1,4 +1,5 @@
-# symbolize.py SAMPLES [TOP]: per-function sample share, using nm on each mapped file.
+# symbolize.py SAMPLES [TOP] [FUNCTION]: per-function sample share, using nm on
+# each mapped file; with FUNCTION (a substring), the hottest addresses inside it.
 import sys, subprocess, bisect, collections
 maps=[]; pcs=[]
 for l in open(sys.argv[1]):
@@ -17,7 +18,8 @@ def table(path):
 # file offset -> vaddr: assume first-segment-based PIE (vaddr == offset for text in typical layouts)
 base={}
 for a,b,off,p in maps: base.setdefault(p,[]).append((a,b,off))
-c=collections.Counter()
+c=collections.Counter(); pcs_in=collections.Counter()
+want=sys.argv[3] if len(sys.argv)>3 else None
 for pc in pcs:
     for a,b,off,p in maps:
         if a<=pc<b:
@@ -25,10 +27,16 @@ for pc in pcs:
             # non-PIE executables: symbols are absolute
             for cand in (rel,pc):
                 i=bisect.bisect_right(addrs,cand)-1
-                if i>=0 and cand-addrs[i]<1<<20: c[(p.split('/')[-1],names[i])]+=1; break
+                if i>=0 and cand-addrs[i]<1<<20:
+                    c[(p.split('/')[-1],names[i])]+=1
+                    if want and want in names[i]: pcs_in[cand]+=1
+                    break
             else: c[(p.split('/')[-1],'?')]+=1
             break
     else: c[('?','?')]+=1
 tot=sum(c.values()); top=int(sys.argv[2]) if len(sys.argv)>2 else 25
 print(f'{tot} samples')
 for (f,n),k in c.most_common(top): print(f'{100*k/tot:5.1f}%  {f:20.20}  {n}')
+if want:
+    print(f'hottest addresses in {want}:')
+    for a,k in pcs_in.most_common(40): print(f'{100*k/tot:5.1f}%  {a:x}')

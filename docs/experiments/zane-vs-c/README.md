@@ -61,6 +61,71 @@ were reverted. Two other port rewrites, Brainfuck ops as a variant case per
 operation and LZWEncode building its string in place, only dodge compiler
 issues (R8, R7) and were dropped in favour of fixing the compiler.
 
+## Step 2: one call site for a loop's callee (R8), `ZANE_VERSION_CALLS=0`
+
+**Design.** `Emit.versioned` emits a loop that indexes a list twice, a
+long and a short copy, so IRCE can drop the long one's checks. A call in
+its body then has two call sites, and LLVM's inliner, which gives a
+function with one caller a large bonus, leaves a mid-sized callee out of
+line (Brainfuck's `command`: cost 315, threshold 225). With the switch, a
+loop that calls any function is emitted once (`lib/codegen/emit.ml`,
+`calls_stay_single`).
+
+**Results.** `instr.py`, all 50 tests (iterations / 10; Brainfuck runs its
+warmup program 10000 times): Brainfuck::Recursion 0.596G → 0.560G (−6%),
+`command` now inlined into `runOps`; every other test within 0.5%
+(CSV, CacheSimulation, LogParser, Template, BWTEncode slightly lower).
+
+## Step 3: move a held local at its last read (R7), `ZANE_ASSIGN_MOVES=1`
+
+**Design.** The perf-issues R7 prototype (`Regions.assigned_moves`,
+`lib/cgt/regions.ml`), moved onto v0.36 and made opt-in, plus one case it
+lacked: when the last read of the held local is the `else` of a flag,
+`let f = { …; if(c) { T }; f := c }` … `{ if(~f) { E } }`, the copy that is
+last in T is also made a move, since the two branches are exclusive. Reads
+before the `if` (LZWEncode's `dict:has(combined)`) come before the move.
+
+**Results.** `perf-issues/repros/string-assign` plus a form 4 shaped as
+LZWEncode (an `else` that reads `combined`), Callgrind, 1000000 rounds:
+
+| form | off | on |
+| --- | ---: | ---: |
+| 1 `combined=…; current=combined` | 675.3M | 301.3M |
+| 2 the same in an `if` | 675.3M | 300.3M |
+| 4 `if/else`, else reads it | 592.0M | 284.3M |
+
+Memcheck clean on form 4 and on `test.js` LZW. Compress::LZWEncode:
+1.994G → 1.353G instructions (−32%); `ab.py` 4 rounds 2.238 s → 1.688 s
+(C: 1.889 s). All 50 checksums OK.
+
+## Step 4: the Json gap (open)
+
+Json::ParseDom / ParseMapping are 1.30–1.33× C. Callgrind (10 iterations):
+Zane runs 237M instructions against C's 208M, though fewer inside
+`yyjson_read_opts` (126M vs 140M); the rest is `arena_json_get`'s
+lookups and about 9M more `memcpy`. Simulated branch and cache misses are
+about equal (1.00M vs 0.91M mispredicts), minor faults are equal (2654 vs
+2438), and C built with clang is as fast as with gcc. Dropping the LLVM
+options Zane starts with (`ZANE_LLVM_OPTIONS=`, keeps none) changed
+nothing. Without hardware counters (no `perf` here), the remaining 15% of
+wall time is not explained.
+
+## Step 5: BWTDecode, and why every byte-oriented port is slow
+
+Callgrind of the decode loop `index=next[index]; out!push(byte(input,
+index))`: 20 instructions per byte, against C's 5. Core has no byte type,
+so the port keeps bytes in `arena$Buffer`, a C struct behind a handle.
+Each `push` stores a `uint8_t`, which may alias anything, so every
+iteration reloads both handles from the frame and each Buffer's size,
+capacity and data pointer. The same holds in every port that works on
+bytes (BWT, Huffman, LZW, Base64, Arith, CRC32, the Brainfuck tape).
+
+Side finding: `filled(Int(256), Int(0))` (arena's push loop) is unrolled
+into 256 checked pushes, about 50 KB of code in `bwt$decode` alone.
+
 ## What remains
 
-- (filled in as steps land)
+- A native byte type: `U8` in the compiler and core, with `List<U8>`
+  and String ↔ bytes conversions, so the byte ports use a list whose count
+  and block the compiler keeps in registers.
+- The Json gap (step 4).

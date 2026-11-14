@@ -244,6 +244,85 @@ local whose address escapes only to inlined code.
   It did not keep Huffman decode's `tree.root` in a register (the reload
   there is register pressure, not aliasing).
 
+## Step 11: what the remaining slow tests do differently
+
+`hotasm.py TEST BIN` profiles one test in both languages with Callgrind
+and prints each side's hottest functions and their hot instructions beside
+the disassembly. Both get the same explicit warmup count: the C harness
+reads a warmup of 0 as its default, a fifth of the iterations and at least
+one, so a Zane run with warmup 0 against C compares unequal work (every
+C-vs-Zane instruction ratio before this step that used warmup 0 overcounts
+C by that much).
+
+Same work, Zane / C:
+
+| test | instructions | time | what differs |
+| --- | ---: | ---: | --- |
+| Json::ParseDom | 1.32 | 1.31 | text copied per parse; yyjson +8% under zanec's LLVM |
+| NeuralNet | 1.31 | 1.32 | indices where C has pointers |
+| CacheSimulation | 1.34 | 1.20 | strings allocated and freed per access |
+| BWTEncode | 1.72 | 1.31 | data-dependent bounds checks; lists zeroed |
+| HuffDecode | 1.72 | 1.25 | index chase and a branch where C has a pointer and `cmov` |
+| Binarytrees::Arena | 0.82 | 1.17 | same code; unexplained |
+| Graph::DFS | 0.87 | 1.27 | stack count kept in the frame |
+| Brainfuck::Array (real program) | ~2.1 | 1.51 | interpreter state in the frame, checks |
+
+- **Json.** `jsonParse(this.text)` deep-copies the String field
+  (`copy … layout: %primitives$String` in the CGT, 11M instructions of
+  memcpy) and hands the copy to C, whose parameter is a read-only view.
+  The yyjson parser itself, the same C source, runs 151.5M instructions
+  compiled by zanec's pipeline against 139.9M by gcc `-O2`, and the port
+  reads each coordinate by three FFI calls (`arena_json_get`, 30M against
+  C's 16M loop).
+- **NeuralNet.** C's synapse holds `NeuralNetNeuron *source_neuron`; the
+  port holds a 1-based `Int` into `neurons`. Each hop is then `dec`, a
+  bounds check (`cmp`, `jae`) and a shift where C has one load: 13
+  instructions per synapse in `feed` against C's 7, 20 against 13 in
+  `update`. C also stores weight and previous weight as one `movups`.
+- **CacheSimulation.** `String("item_")+String(n)` allocates twice per
+  access, and the node's value string is replaced each hit: the runtime's
+  `zane_alloc_held`, `zane_free`, `zane_region_at` (finding a block's
+  region from its address) and memcpy take about 400M instructions
+  against C's 120M of malloc and free, where C formats the key into a
+  stack buffer.
+- **BWTEncode.** The rank loop does six bounds checks per element, two
+  indices against three lists that all have `n` elements, which C does not
+  check at all; the indices come from data, so IRCE cannot drop them. Each
+  round allocates five lists through `filled(n, 0)`: memset is 221M
+  instructions against C's 53M (C mallocs its scratch arrays unzeroed;
+  Callgrind counts a `rep stosb` byte as an instruction, so time pays
+  less than that).
+- **HuffDecode.** C walks pointers and picks the child with `cmovae`; the
+  port walks 1-based indices (`dec`, `shl $5`, bounds check, load) and
+  branches on the bit, then checks the same bound on both sides. A switch
+  that sends every failed check of a function to one block
+  (`ZANE_ONE_STOP=1`, `Emit.element`) lets LLVM make the choice a select,
+  branch-free as in C, and HuffDecode gets 24% slower: without the
+  prediction the CPU waits on the longer index-to-address chain at every
+  bit. Off by default.
+- **Graph::DFS.** Fewer instructions than C (1363M against 1575M) and
+  fewer simulated misses and mispredicts, yet slower. The stack's count
+  lives in the frame (`0xf8(%rdi)`): every pop loads, decrements and
+  stores it, and the next push or pop loads it again, a chain through
+  memory each step; C's `stack_top` is a register.
+- **Binarytrees::Arena.** `build` and `sum` are instruction for
+  instruction what C's are (Zane's count field is 32-bit, its `sum` turns
+  the right call into a loop), 562M against 687M, with fewer simulated
+  misses; 0.64 s against 0.55 s is not explained by the code.
+- **Brainfuck::Array / Recursion** (steps 9–10): the tape's block, count
+  and position, and in Recursion `ops`'s count, are reloaded from memory
+  each step; each `ops[i]` and tape access is checked; Recursion
+  dispatches twice (the variant's tag, then the command byte) where C
+  switches once over its op type.
+
+Page faults are not it: over full runs system time is near 0 on both
+sides, and Zane faults less than C (Binarytrees::Arena 6445 vs 12383).
+
+The two switches of step 10 over all 50 tests (instructions, against the
+three kept switches): `ZANE_SIZED_TBAA=1` Maze::Generator −9.5%, Maze::BFS
+−7.8%, Maze::AStar −6.7%; `ZANE_FRAME_SCOPES=1` on top, Distance::Jaro
+−16%, Json −1.3% to −3.6%, Spectralnorm +1.7%.
+
 ## What remains
 
 - Base64 is a C library call in both languages; CRC32 and SHA256 (0.97,

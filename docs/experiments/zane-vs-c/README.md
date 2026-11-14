@@ -511,6 +511,33 @@ its switches off (0.280 s) and with the step-9 set (0.284 s) are within
 noise of each other; the step-9 set with `LENT_OWNERS` is faster (0.271
 s). Step 12's runs were unpinned, on all four CPUs.
 
+**Whole-suite check of the branch (wall time).** `ab.py`, 4 rounds,
+unpinned:
+
+- `zane-perf` port, v0.36 against the branch with every switch off
+  (`step14-ab-v036-vs-branch-off.md`): geomean 1.027. Two branch changes
+  apply with the switches off: f577873's `moved_here` condition in the
+  default assign-moves pass, and the U8 runtime function, which makes
+  `build.sh` bundle the runtime itself.
+- This step's port, switches off against the step-9 set with
+  `LENT_OWNERS` (`step14-ab-off-vs-switches.md`): geomean 1.007.
+
+The tests that came out slowest (Graph::AStar +28%/+32%, Maze::AStar
++24%, Calculator::Interpreter +26%/+19%), run again with `bench1.py`, 8
+rounds pinned, over all five builds: every median is within 7% of
+v0.36's, and every build's range overlaps the others'. Graph::AStar's
+switches-off build was 0.988 s in one A/B and 0.733 s in the other. No
+regression stood out from the noise, so nothing on the branch was
+reverted. Template::Regex, GameOfLife and Words keep step 12's two levels.
+
+**All 50 tests against C** (`measure.py --rounds 5`, best of 5,
+`step14.md`, `step14.json`), the step-9 set with `LENT_OWNERS` and this
+step's port: **geomean 0.880**. At 1.10× C or slower: Brainfuck::Array
+1.46, Brainfuck::Recursion 1.44, BWTEncode 1.29, Graph::DFS 1.27,
+NeuralNet 1.25, HuffDecode 1.25, Matmul::T16/T4/T8 1.19/1.17/1.17,
+CacheSimulation 1.18, Sort::Merge 1.16, Etc::TextRaytracer 1.12,
+Sort::Quick 1.12, Matmul::Single 1.10.
+
 ## What remains
 
 - Base64 is a C library call in both languages; CRC32 and SHA256 (0.97,

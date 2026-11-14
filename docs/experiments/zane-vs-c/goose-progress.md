@@ -47,3 +47,11 @@ Maze::Generator 1.8, Words 1.7, Interpreter 1.6, Sort::Merge 1.5.
   Tried making a list past 256 KiB an oversized growable block at once:
   0.58 s, worse (a mapping per iteration); reverted.
 
+
+### Sort::Self: 1.98 → 0.33 s (Goose/clang 0.34; 5.8× → 1.0×)
+
+- Port sorted with C's `qsort` (comparator through a pointer) via the arena
+  FFI; Goose's std `sort` is a pdqsort with a branchless Lomuto partition.
+- Compiler + core: `List.sort()` for I32/I64/U8, runtime `zane_list_sort`,
+  the same algorithm written out per width (fixtures `listSort`,
+  `reject/sortFloats`). Port: copy the data, `sort()`, as Goose's port.

@@ -681,6 +681,51 @@ and 0.985 against no shadow (`step16-ab-noshadow-vs-written.md`). Graph::DFS,
 whose −10% under the shadow step 13 measured, shows no gain from it in
 these pinned runs.
 
+## Step 17: held locals as plain values? (investigated, not built)
+
+The idea: emit a held local as a plain value, which LLVM keeps in a
+register as it does a C local, and write it into its frame slot only
+around the runtime calls that need it there. That would make
+`FRAME_SHADOW`'s post-`-O2` reconstruction unnecessary.
+
+**The slot has to stay the local's home.** The runtime finds a block's
+region from an address (`zane_region_at`, `runtime/arena.c`), and a
+list's first block goes in the region of its handle's address
+(`zane_list_grow`, `runtime/list.c`). A handle on the machine stack counts
+as the innermost scope's, whichever that is when the first push runs.
+A list moved to an `alloca` and first pushed by a callee that opens its
+own arena (`tree!build()` filling `tree.nodes`) would get its block in
+the callee's region, freed when the callee returns. So "plain values" can
+only be a copy the function works on, written to the slot before calls
+that read it and reloaded after calls that may write it (what is handed
+on with `!`, and the runtime's own scope, spawn and move calls). That is
+what `FRAME_SHADOW` does after `-O2`; codegen would only make it more
+precise (stores only before calls that read, a reload only after calls
+given that slot).
+
+**What that could still buy is small.** With `ZANE_FRAME_SHADOW_DEBUG`,
+51 functions have frames with slots to copy, and the shadow gives up on
+62 frames (a frame base merged by a `phi` or `select`): 56 in `zane$main`,
+the rest in `template$step`, `matmul$step` and `arithmetic$Table`. On the
+tests still 1.10× C or slower, the shadow changes little (`bench1.py`, 4
+rounds pinned, step 15's set without and with it):
+
+| test | no shadow | shadow | slots copied in the hot function |
+| --- | ---: | ---: | --- |
+| Etc::NeuralNet | 1.20 s | 1.22 s | none |
+| Sort::Merge | 1.74 s | 1.76 s | 1 |
+| Sort::Quick | 1.42 s | 1.43 s | 1 |
+| Etc::TextRaytracer | 1.01 s | 1.00 s | none |
+| Etc::CacheSimulation | 0.83 s | 0.78 s | 1 |
+| Compress::BWTEncode | 0.74 s | 0.73 s | 12 |
+
+Their hot code holds few frame slots, and keeping those in registers
+does not move them. Step 15's harness also priced the write-through
+stores at nothing. So emitting held locals as plain values would reach
+about where the shadow already is, and the remaining gaps lie elsewhere:
+indices where C has pointers (NeuralNet, HuffDecode), bounds checks
+(Brainfuck), and allocation (CacheSimulation). Not built.
+
 ## What remains
 
 - `FRAME_SHADOW`'s HuffDecode loss (step 16) is one register copy of a

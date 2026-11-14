@@ -323,7 +323,60 @@ three kept switches): `ZANE_SIZED_TBAA=1` Maze::Generator −9.5%, Maze::BFS
 −7.8%, Maze::AStar −6.7%; `ZANE_FRAME_SCOPES=1` on top, Distance::Jaro
 −16%, Json −1.3% to −3.6%, Spectralnorm +1.7%.
 
-## Step 12: the three compiler fixes of step 11, timed
+## Step 12: a three-way wall-clock re-bench
+
+`rebench3.py` runs three binaries on `run.js`, interleaved, and appends each
+round to `rebench3.json`. This step used 5 rounds and takes each test's median
+time. Wall time only; no Callgrind.
+
+- **C:** `make -j4 prod`.
+- **base:** `zane-perf` 76bc235 built with the v0.36 release, the port's
+  `zane-version` moved to v0.36, no switches.
+- **new:** this branch at fad9277 (the U8 ports), built by `build.sh` with
+  compiler `perf/zane-vs-c` 082f244 and `ZANE_LOOP_REGS=1
+  ZANE_ASSIGN_MOVES=1 ZANE_VERSION_CALLS=1`.
+
+**Geomean: base 0.921× C, new 0.905× C** (new / base 0.982). At 1.2× C or
+slower: 10 tests in base, 8 in new. LZWEncode, Maze::BFS and BWTEncode left
+that list; Matmul::T4 joined it, at 1.23. The Claude Doc's chart shows the
+new column.
+
+These changed by more than 5%, and the new build's five times and the base
+build's five times do not overlap:
+
+| test | base × C | new × C | new / base |
+| --- | ---: | ---: | ---: |
+| Calculator::Interpreter | 0.38 | 0.24 | 0.65 |
+| Maze::Generator | 0.82 | 0.57 | 0.70 |
+| Maze::AStar | 0.98 | 0.71 | 0.72 |
+| Maze::BFS | 1.20 | 0.88 | 0.73 |
+| Compress::LZWEncode | 1.26 | 0.94 | 0.75 |
+| Brainfuck::Recursion | 1.56 | 1.36 | 0.87 |
+| Compress::BWTDecode | 1.15 | 1.06 | 0.91 |
+| Compress::HuffEncode | 0.75 | 0.69 | 0.92 |
+| Brainfuck::Array | 1.43 | 1.33 | 0.93 |
+| Json::ParseMapping | 1.26 | 1.45 | 1.15 |
+
+- **Gains the earlier steps explain:**
+  - LZWEncode: step 3.
+  - Brainfuck::Recursion: step 8.
+  - BWTDecode and HuffEncode: steps 6–9.
+- **Gains no step explains:** Maze and Calculator::Interpreter. Graph::AStar
+  (0.92) and Graph::DFS (0.94) are faster too, but their times overlap.
+  Step 11 counts Maze −7% to −10% instructions with `ZANE_SIZED_TBAA`, but
+  that switch was off here. An A/B of one switch at a time would show which
+  switch does it.
+- **Json::ParseMapping, +15%:** a regression with no overlap between the
+  two builds (base 0.269–0.288 s, new 0.306–0.332 s). Json::ParseDom moved
+  +11%, with overlap. Its cause is not known yet. It needs explaining
+  before any of the switches goes to `main`.
+- **Times that jump:** Etc::Words, Template::Regex, Template::Parse and
+  Etc::GameOfLife each come out at one of two levels, about 30% apart, in
+  both builds (Template::Regex: 1.07 s or 1.72 s). Their medians differ by
+  23–30% between the builds, but the ranges overlap almost fully, so this
+  run says nothing about them. Etc::Sieve and Graph::BFS also jump, C
+  included (C's Graph::BFS ran 0.81–1.38 s).
+## Step 13: the three compiler fixes of step 11, timed
 
 Each is a switch on `perf/zane-vs-c`, off by default, judged by wall time
 (`ab.py`, interleaved rounds) against the step-9 set (`ZANE_LOOP_REGS=1
@@ -338,7 +391,7 @@ each on.
   String. The switch lets the place be a member of an owner a local
   holds, unless a spawned call may write it back (`snapshots`). Only
   `jsonbench$step` and `csvbench$step` change: Json::ParseDom −6%,
-  ParseMapping −5%, CSV::Parse −4% (7 rounds).
+  ParseMapping −5%, CSV::Parse −4% (7 rounds). This does not account for step 12's +15% ParseMapping regression, which predates it.
 - **`ZANE_FRAME_SHADOW=1`** (`lib/codegen/frame_shadow.ml`, ec31bb6). DFS's
   push goes through core's `push`, which LLVM inlines, so emit cannot keep
   the header in registers itself; this is an IR pass after O2. Each slot
@@ -392,12 +445,12 @@ precision.
 - Base64 is a C library call in both languages; CRC32 and SHA256 (0.97,
   0.86) and Arith (1.00, 1.08) were left on `Buffer`.
 - Brainfuck needs the tape's fields in registers across the interpreter
-  loop; `ZANE_FRAME_SHADOW` (step 12) covers frame slots, not the tape
+  loop; `ZANE_FRAME_SHADOW` (step 13) covers frame slots, not the tape
   reached through `this`.
 - Placement: a 25% swing on HuffDecode from code layout alone makes small
   gains unmeasurable one test at a time.
 - Brainfuck::Recursion re-reads `ops`'s count and checks `ops[i]` on every
   step; `ListRef` is a reference type, so hoisting needs proof that nothing
   in the loop can reach it mutably.
-- The Json gap (step 4): the String copy is gone (step 12); yyjson under
+- The Json gap (step 4): the String copy is gone (step 13); yyjson under
   zanec's LLVM and the FFI calls per element remain.

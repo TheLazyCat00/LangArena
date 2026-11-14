@@ -440,6 +440,77 @@ after gives Zane / C **0.879** (step 9: 0.917), but C's own times moved by
 up to 5% between those runs, so the two are not comparable to that
 precision.
 
+## Step 14: the Json gap, by wall time
+
+Json::ParseMapping, taken apart by running variants and timing them; no
+Callgrind. `bench1.py ROUNDS TEST BIN...` interleaves binaries on one test,
+pinned to one CPU, and gives each one's median; every number here is a
+median of 10–20 rounds. C is `make prod` (gcc 13 `-O2`). Both sides
+parse the same yyjson source (0.13.0, the C build's clone and the port's
+`vendor/yyjson.c` are byte-identical) and link glibc's `malloc`. Minor
+faults (6138 vs 6741) and system time (0.012 s each) are equal, so the
+gap is user code.
+
+**Where the time goes (v0.36, port at `zane-perf`).** A parse-only build
+of each side (C: the coordinate loop skipped; Zane: `i!to(Int(0))`, the
+checksum then fails but the time is kept):
+
+| part, 100 iterations | C | Zane | gap |
+| --- | ---: | ---: | ---: |
+| parse (Zane's text copy included) | 0.191 s | 0.203 s | +0.012 s |
+| reading the coordinates | 0.040 s | 0.082 s | +0.042 s |
+| whole test | 0.231 s | 0.285 s | +0.054 s |
+
+Reading the coordinates is three quarters of the gap. In the assembly,
+C's coordinate loop (`JsonParseMapping_run`) makes no calls at all: gcc
+inlines `yyjson_obj_get(coord, "x")` with the key a literal, so its
+`strlen` is the constant 1 and its compare is one byte. The port's
+`arena_json_get` (`lib/arena/ecosystem.c`) picks the key as
+`keys[axis]`, so the inlined `yyjson_obj_get` calls `strlen@plt` once and
+`bcmp@plt` for each key it passes: 3 `strlen` and 6 `bcmp` calls per point,
+behind 3 calls to `arena_json_get` that LLVM does not inline into
+`jsonbench$step` (the C is linked into the module before the pipeline,
+`-O2 -Xclang -disable-llvm-passes`, so the inliner saw it and declined).
+`arena_json_parse` also walks the array once to fill an array of element
+pointers, which the reads then walk again; C walks the parsed document
+(about 6 MB, more than L2) once, inside its `yyjson_arr_foreach`.
+
+`json/harness.c` repeats C's loop body outside the arena, with variants
+for each of those shapes. The copy of the 2.3 MB text into a fresh buffer
+costs 0.25–0.4 ms of a 2.1 ms iteration there, and yyjson built by clang
+18 `-O2` parses as fast as by gcc. The harness overstates the port's
+second walk and its list (glibc's `realloc` of a growing list faults pages
+each iteration; Zane reuses the list's span), so the split above is from
+the real binaries.
+
+**Port change: the binding reads as C does.** `arena_json_get` now keeps a
+cursor: the next index is one step on (`unsafe_yyjson_get_next`), any
+other is found from the start, and the pointer array is gone. Each key is
+a literal (`axis == 0 ? yyjson_obj_get(v, "x") : …`), as in C. The cursor
+alone on v0.36: ParseMapping −5%, ParseDom −6%.
+
+**Results** with compiler `perf/zane-vs-c` 897de93 (`build.sh`), port at
+this step; Zane / C, medians of 15 rounds:
+
+| build | ParseMapping | ParseDom |
+| --- | ---: | ---: |
+| switches off | 1.24 | 1.18 |
+| switches off, binding | 1.05 | 1.02 |
+| step-9 set | 1.23 | 1.21 |
+| step-9 set, binding | 1.05 | 1.03 |
+| step-9 set + `ZANE_LENT_OWNERS=1` | 1.15 | 1.15 |
+| step-9 set + `ZANE_LENT_OWNERS=1`, binding | **1.00** | **0.96** |
+
+So the binding is worth about 15%, `LENT_OWNERS` (no text copy) about 5%,
+and with both the Json tests run as fast as C. All three Json checksums
+pass.
+
+**Step 12's +15% ParseMapping regression does not reproduce.** Pinned and
+interleaved, the same port built by v0.36 (0.286 s), by the branch with
+its switches off (0.280 s) and with the step-9 set (0.284 s) are within
+noise of each other; the step-9 set with `LENT_OWNERS` is faster (0.271
+s). Step 12's runs were unpinned, on all four CPUs.
+
 ## What remains
 
 - Base64 is a C library call in both languages; CRC32 and SHA256 (0.97,
@@ -452,5 +523,8 @@ precision.
 - Brainfuck::Recursion re-reads `ops`'s count and checks `ops[i]` on every
   step; `ListRef` is a reference type, so hoisting needs proof that nothing
   in the loop can reach it mutably.
-- The Json gap (step 4): the String copy is gone (step 13); yyjson under
-  zanec's LLVM and the FFI calls per element remain.
+- Json is at C's speed with `ZANE_LENT_OWNERS` and step 14's binding.
+  `arena_json_get` is still a call per coordinate that LLVM declines to
+  inline, and `step` reloads the handle from the frame before each call
+  and stores the list's count after each push; none of it shows in the
+  times now.

@@ -137,7 +137,6 @@ Encoded(data String, bits Int, frequencies List<Int>) => init {
 }
 
 Encoded encode(input String) {
-  inputBytes Buffer=bytes(input);
   freq List<Int> = frequencies(input);
   if(length(input)==0) {
     return Encoded(String(""), Int(0), freq);
@@ -147,13 +146,13 @@ Encoded encode(input String) {
   root Int=tree.root;
   tree!codes(root, Int(0), Int(0));
   // The pending byte and its bit count stay in locals, as in C's encoder.
-  out Buffer=buffer(Int(0), Int(0));
+  out List<U8> = List(U8);
   pending Int=Int(0);
   position Int=Int(0);
   written Int=Int(0);
   i Int=Int(1);
-  i!to(length(input)) {
-    value Int=byte(inputBytes, i)+1;
+  i!to(input:byteCount()) {
+    value Int=Int(input:byteAt(i))+1;
     code Int=tree.codes[value];
     codeLength Int=tree.lengths[value];
     j Int=Int(1);
@@ -161,7 +160,7 @@ Encoded encode(input String) {
       pending=pending*2+bitAnd(shiftRightLogical(code, codeLength-j), Int(1));
       position=position+1;
       if(position==8) {
-        out!push(pending);
+        out!push(U8.wrap(pending));
         pending=Int(0);
         position=Int(0);
       }
@@ -169,9 +168,9 @@ Encoded encode(input String) {
     written=written+codeLength;
   }
   if(position>0) {
-    out!push(shiftLeft(pending, Int(8)-position));
+    out!push(U8.wrap(shiftLeft(pending, Int(8)-position)));
   }
-  return Encoded(out:string(), written, freq);
+  return Encoded(String(out), written, freq);
 }
 
 String decode(encoded Encoded) {

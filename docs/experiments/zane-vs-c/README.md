@@ -608,6 +608,30 @@ the check `pc - 1 <u count` (two compares of nearly one bound), the tape
 check `position - 1 <u count`, and a `mov` that zero-extends the 32-bit
 list count before each compare.
 
+**All 50 tests with every sound switch on.** `LOOP_REGS`,
+`ASSIGN_MOVES`, `VERSION_CALLS`, `LENT_OWNERS`, `FRAME_SHADOW`,
+`MERGE_CHECKS`, `ENDLESS`, `SIZED_TBAA` and `FRAME_SCOPES`; off:
+`ONE_STOP` (HuffDecode +24%, step 11), `NO_CHECKS` (unsound),
+`LLVM_OPTIONS` (unset keeps every option). Compiler 53f09ab, port at this
+step; all 50 checksums pass.
+
+- Against C (`measure.py --rounds 5`, `step15.md`, `step15.json`):
+  **geomean 0.863** (step 14's run with the step-9 set and `LENT_OWNERS`:
+  0.880). At 1.10× C or slower: HuffDecode 1.65, NeuralNet 1.28,
+  Sort::Merge 1.23, Brainfuck::Recursion 1.22, Matmul::T16 1.19,
+  Brainfuck::Array 1.14, Sort::Quick 1.14, TextRaytracer 1.13,
+  CacheSimulation 1.13, BWTEncode 1.13, Matmul::T8 1.12.
+- Against the step-9 set with `LENT_OWNERS` on the same port (`ab.py`, 4
+  rounds, `step15-ab-base-vs-all.md`): geomean 0.992. Sieve −22%,
+  GameOfLife −18%, Graph::DFS −14%, Matmul::Single −12%; HuffDecode
+  +29%, Template::Parse +23%, Binarytrees::Obj +17%. Pinned (`bench1.py`,
+  6 rounds), Template::Parse and Binarytrees::Obj are within noise and
+  HuffDecode is not: 1.14 s → 1.41 s. Without `FRAME_SHADOW` (everything
+  else on) it is 1.07 s, so the shadow is the cause, as in step 13, which
+  found the loop two loads shorter and placed worse. The Brainfuck tests
+  are the same in both builds here (0.99, 1.00): the cell change is in the
+  base too, and `ENDLESS` and the shadow add nothing to it.
+
 ## What remains
 
 - Base64 is a C library call in both languages; CRC32 and SHA256 (0.97,

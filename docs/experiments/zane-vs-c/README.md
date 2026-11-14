@@ -726,6 +726,18 @@ about where the shadow already is, and the remaining gaps lie elsewhere:
 indices where C has pointers (NeuralNet, HuffDecode), bounds checks
 (Brainfuck), and allocation (CacheSimulation). Not built.
 
+## Step 18: re-runs against C and against Goose
+
+**C again.** Step 15's set rebuilt with compiler 5c95fa1 is byte-identical
+to step 15's binary (the switches added since are off unless set).
+`measure.py --rounds 5` (`step18.md`, `step18.json`): **geomean 0.863**,
+as in step 15. At 1.10× C or slower: HuffDecode 1.56, Matmul::T4 1.30,
+NeuralNet 1.24, Matmul::T8 1.22, Matmul::T16 1.19, Brainfuck::Recursion
+1.18, Sort::Merge 1.17, Brainfuck::Array 1.15, TextRaytracer 1.13,
+CacheSimulation 1.13, BWTEncode 1.13, Sort::Quick 1.11, Graph::BFS 1.10.
+Between the two runs Matmul::T4 moved 1.07 → 1.30, Template::Regex 0.84 →
+0.63 and GameOfLife 0.59 → 0.47, the tests already known to jump.
+
 ## What remains
 
 - `FRAME_SHADOW`'s HuffDecode loss (step 16) is one register copy of a

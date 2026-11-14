@@ -738,6 +738,19 @@ CacheSimulation 1.13, BWTEncode 1.13, Sort::Quick 1.11, Graph::BFS 1.10.
 Between the two runs Matmul::T4 moved 1.07 → 1.30, Template::Regex 0.84 →
 0.63 and GameOfLife 0.59 → 0.47, the tests already known to jump.
 
+**Goose.** The port in `goose/` built with the Goose v2026.4 release
+(`goose -O2 --standalone`, the Makefile's `prod`) and its C compiled at
+`-O2` by gcc 13 and by clang 18. All 50 checksums pass. `tri.py 3`
+interleaves Goose/gcc, Goose/clang, Zane (the set above) and C, pinned
+to one core, rotating the order each round (`step18-goose.md`,
+`step18-goose.json`). Geomeans: Zane / Goose-gcc **1.041**, Zane /
+Goose-clang **1.258**, Goose-gcc / C 0.807, Goose-clang / C 0.668
+(published: 0.79 and 0.66), Zane / C 0.841. Goose is far ahead on
+Sort::Self (×5.7), Calculator::Ast (×7.3), LZWDecode (×5.7), CSV::Parse
+(×4.1), LZWEncode, LogParser, SHA256 (clang), HuffDecode, NGram, Words,
+BWTEncode and Binarytrees::Arena; Zane is ahead on Base64 (Goose/gcc
+×14), CacheSimulation (×2), Maze::AStar, Jaro and the Json tests.
+
 ## What remains
 
 - `FRAME_SHADOW`'s HuffDecode loss (step 16) is one register copy of a

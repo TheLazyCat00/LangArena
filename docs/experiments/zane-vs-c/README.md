@@ -814,6 +814,14 @@ every check took a jump more: plain builds up to 4.25% more estimated
 cycles (particles; flips 3.05%). Main's order (4551d99) puts every plain row
 within 0.1% of main.
 
+**Against Goose again.** `tri.py 3` with this step's build (every
+switch, compiler 59810c8), Goose/gcc and Goose/clang (`step19-goose.json`):
+Zane / Goose-gcc **1.08** (Zane faster on 21 of 50), Zane / Goose-clang
+**1.31** (12 of 50). Both are above step 18's 1.041 and 1.258, whose build
+had the LZWEncode leak. Furthest behind (× Goose/clang): LZWDecode 6.2,
+Sort::Self 5.8, CSV::Parse 4.0, Calculator::Ast 3.9, LZWEncode 3.2,
+LogParser 2.4, SHA256 2.4, HuffDecode 2.3.
+
 ## What remains
 
 - Calculator::Ast is still 3.7× Goose: each name is a fresh String

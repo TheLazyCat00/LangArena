@@ -323,14 +323,81 @@ three kept switches): `ZANE_SIZED_TBAA=1` Maze::Generator −9.5%, Maze::BFS
 −7.8%, Maze::AStar −6.7%; `ZANE_FRAME_SCOPES=1` on top, Distance::Jaro
 −16%, Json −1.3% to −3.6%, Spectralnorm +1.7%.
 
+## Step 12: the three compiler fixes of step 11, timed
+
+Each is a switch on `perf/zane-vs-c`, off by default, judged by wall time
+(`ab.py`, interleaved rounds) against the step-9 set (`ZANE_LOOP_REGS=1
+ZANE_ASSIGN_MOVES=1 ZANE_VERSION_CALLS=1`). All 50 checksums pass with
+each on.
+
+- **`ZANE_LENT_OWNERS=1`** (`Lower_calls.owner_path`, 40b806c). Json's
+  copy came from the conversion `@primitives$String(this.text)`: a lent
+  conversion (L11) reads a member where it is only when its place is
+  rooted in plain values, and `State` is a reference type (it holds a
+  `Json`), so the conversion was expanded and its `return` copied the
+  String. The switch lets the place be a member of an owner a local
+  holds, unless a spawned call may write it back (`snapshots`). Only
+  `jsonbench$step` and `csvbench$step` change: Json::ParseDom −6%,
+  ParseMapping −5%, CSV::Parse −4% (7 rounds).
+- **`ZANE_FRAME_SHADOW=1`** (`lib/codegen/frame_shadow.ml`, ec31bb6). DFS's
+  push goes through core's `push`, which LLVM inlines, so emit cannot keep
+  the header in registers itself; this is an IR pass after O2. Each slot
+  of a frame (a base an `llvm.assume dereferenceable` names) past the
+  record that is only loaded and stored whole, always as one scalar type,
+  gets a write-through copy in an alloca: filled where the frame is
+  placed, stored with every store, filled again after any call given an
+  address in the frame. Where a slot's address is stored (a deferred
+  `.move` job keeps it, and may rewrite the list's block), the copy is
+  filled again after every call the frame dominates. Loads read the copy,
+  which SROA makes a register. 34 functions get copies; Graph::DFS −10%
+  in each of three runs; Brainfuck::Recursion and Jaro −11% in one run
+  and within noise in others.
+- **`ZANE_MERGE_CHECKS=1`** (`lib/codegen/merged_checks.ml`, 897de93).
+  The lists BWTEncode indexes together have the same length, but `indices`
+  comes back from `byKey` (not inlined) and `ranks` is reassigned each
+  round, so LLVM cannot prove it. Proving it is not needed: a failed check
+  flushes output and exits, so a later check of the same index on the
+  same straight path, with no call between, can be folded into the
+  earlier one, which then compares with the smaller bound
+  (`llvm.umin`). In BWTEncode's ranking loop `prior` is now checked once
+  where it was checked three times; `index` keeps three checks, and two
+  of the merged bounds are spilled and reloaded each time round.
+  BWTEncode's instructions 395M → 374M, wall time −2%. (Its other costs
+  are `byKey`, 37%, and the zeroing in `filled`, 19%.) A known loosening:
+  output written by inlined code, without a call, between two merged
+  checks is lost if the later check fails. LOOP_REGS now also reads a
+  list's count before `zane_list_room`, which keeps it, so a filled list's
+  count is known after the room is made.
+
+Layout dominates many of these tests. HuffDecode's hot loop with
+FRAME_SHADOW is two loads shorter and otherwise the same code, and runs
+23% slower (1.45 s → 1.83 s); built with every loop aligned to 64 bytes
+(`ZANE_LLVM_OPTIONS=-align-loops=64`), both builds run it in about 1.8 s
+and the shadow is 2% faster, so 1.45 s was a lucky placement. Maze::BFS
+(+7% twice) runs the same instruction count either way (1105M vs 1108M).
+Aligning every loop is no fix: over all 50 tests it is 3.7% slower
+(Jaro ×1.95). The CPU is an Emerald Rapids Xeon (model 207), so this is
+not the JCC erratum.
+
+With all three switches on, `ab.py` against the step-9 build over all 50
+tests gives a geomean of 1.008, gains and placement swings cancelling
+(HuffDecode +25%, LogParser +19%, Template::Parse +15% against
+CacheSimulation −15%, GameOfLife −13%, CSV −9%); a `measure.py` run right
+after gives Zane / C **0.879** (step 9: 0.917), but C's own times moved by
+up to 5% between those runs, so the two are not comparable to that
+precision.
+
 ## What remains
 
 - Base64 is a C library call in both languages; CRC32 and SHA256 (0.97,
   0.86) and Arith (1.00, 1.08) were left on `Buffer`.
 - Brainfuck needs the tape's fields in registers across the interpreter
-  loop: a frame the runtime cannot reach while the loop runs, or scalar
-  promotion done by codegen before LLVM inlines.
+  loop; `ZANE_FRAME_SHADOW` (step 12) covers frame slots, not the tape
+  reached through `this`.
+- Placement: a 25% swing on HuffDecode from code layout alone makes small
+  gains unmeasurable one test at a time.
 - Brainfuck::Recursion re-reads `ops`'s count and checks `ops[i]` on every
   step; `ListRef` is a reference type, so hoisting needs proof that nothing
   in the loop can reach it mutably.
-- The Json gap (step 4).
+- The Json gap (step 4): the String copy is gone (step 12); yyjson under
+  zanec's LLVM and the FFI calls per element remain.

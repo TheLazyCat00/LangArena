@@ -123,9 +123,37 @@ bytes (BWT, Huffman, LZW, Base64, Arith, CRC32, the Brainfuck tape).
 Side finding: `filled(Int(256), Int(0))` (arena's push loop) is unrolled
 into 256 checked pushes, about 50 KB of code in `bwt$decode` alone.
 
+## Step 6: a native byte type, `U8`
+
+**Design.** Compiler (`perf/zane-vs-c`): a primitive `@primitives$U8`
+lowered to LLVM `i8` (`Ty.I8`), with `==`, `<`, conversions to and from
+`I64`/`I32` (`wrap` towards U8), literals 0–255, and three intrinsics:
+`String:byteCount()`, `String:byteAt(i)` (a checked load of the text's
+byte, lowered to `Array_at` like a list read) and `List<T>:text()`, a
+String copied from a byte list (runtime `zane_text_bytes`). Core
+(`zane-lang/core` branch `perf/zane-vs-c`): `U8`, `Int(U8)`, `U8.wrap`,
+`String.byteCount/byteAt`, `String(List<U8>)`. The port's `zane.coda`
+points at a local core checkout (`core v0.10 /home/user/core`) while this
+runs.
+
+Port: `codec.frequencies` and `bwt.encode/decode` read the String's bytes
+and build a `List<U8>` instead of an `arena$Buffer`.
+
+**Results.** `decode` 450M → 290M instructions (C: 264M), `frequencies`
+143M → 77M. Compress::BWTDecode 4.392G → 3.932G (−10.5%); BWTEncode
+unchanged (its time is the suffix sort). All 50 checksums OK; compiler
+tests and core's tests pass.
+
+What is left in the decode loop is the output list: its count and block
+are loaded from and stored to the frame on every push. LICM does not
+promote them to registers because the loop's bounds check makes the push
+conditionally executed (reproduced in a small IR file: without the check,
+no count access stays in the loop).
+
 ## What remains
 
-- A native byte type: `U8` in the compiler and core, with `List<U8>`
-  and String ↔ bytes conversions, so the byte ports use a list whose count
-  and block the compiler keeps in registers.
+- Keep a pushed-to list's count and block in registers across a loop
+  (step 6).
+- Move the other byte ports (Huffman, LZW, Base64, Arith, CRC32, SHA256,
+  the Brainfuck tape) to `U8`.
 - The Json gap (step 4).

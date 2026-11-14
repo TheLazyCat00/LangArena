@@ -193,8 +193,65 @@ checks make the push conditionally executed, which blocks its scalar
 promotion. BWT's decode loop is now 13 instructions per byte; with U8,
 Compress::BWTDecode went from 2.04× C to 0.99× (3 rounds, `measure.py`).
 
+## Step 9: a timed run, and more byte ports
+
+`measure.py`, 3 rounds, with `ZANE_LOOP_REGS=1 ZANE_ASSIGN_MOVES=1
+ZANE_VERSION_CALLS=1` and the U8 ports of step 6: **geomean 0.917**
+(baseline 0.934). BWTDecode 1.87 → 1.02, LZWEncode 1.24 → 0.86, LZWDecode
+→ 0.72. Still 1.2× C or slower: Brainfuck::Array 1.51, Recursion 1.47,
+Matmul::T8/T16 ~1.4 (threads; a direct run of T4 gives 1.5–1.9 s for both
+languages run to run), Json 1.31/1.34, NeuralNet 1.32, BWTEncode 1.31, DFS
+1.27, HuffDecode 1.25, Binarytrees::Arena 1.22, CacheSimulation 1.20.
+
+More ports to `U8`, each against the build before it (`ab.py`, 4 rounds):
+
+| change | test | instructions | time B / A |
+| --- | --- | ---: | ---: |
+| Brainfuck tape `List<U8>` (was `Buffer`) | Array (real program) | 27.6G → 28.1G | — |
+| Huffman encode: String bytes in, `List<U8>` out | HuffEncode | 1.273G → 0.927G | 0.86 |
+| Huffman decode, the same | HuffDecode | 2.389G → 2.472G | 1.31 |
+| Huffman decode, input only | HuffDecode | | 1.11 |
+
+The decode's inner loop is the same instructions in both builds and
+Cachegrind's branch and cache simulation shows no difference (13.3% vs
+12.1% mispredicted), so the 31% is something the simulator does not model;
+without hardware counters it stays unexplained. Huffman's decode keeps its
+`Buffer`; its encode uses U8. The Brainfuck tape stays `List<U8>`, which
+is what C does (a `uint8_t` array).
+
+## Step 10: frame slots and alias analysis (two switches, little effect)
+
+Brainfuck::Array's interpreter loop reloads the command list, the jump
+list and the tape (block, count, position) from the frame on every step:
+the cold `zane_list_push` that grows the tape may, as far as LLVM knows,
+write any slot of the frame, since the runtime can reach it. C's tape is a
+local whose address escapes only to inlined code.
+
+- `ZANE_FRAME_SCOPES=1` (`lib/codegen/frame_scopes.ml`): after the `-O2`
+  pipeline, accesses at constant offsets from one base are grouped by the
+  bytes they touch and each group gets an alias scope
+  (`llvm.experimental.noalias.scope.decl` where the base is made); the
+  runtime's list growth calls get their header's group. Then LICM and GVN
+  run again. Tagging before the pipeline missed the calls, which reach the
+  loop only by inlining `core`'s `push`. The command and jump lists' loads
+  then leave the loop, but the tape's fields are written in the loop, and
+  LLVM promotes a conditionally written location only when its object
+  does not escape, which a frame does. Brainfuck::Array unchanged; Json
+  −1.5% to −3.6% instructions, Spectralnorm +1.7%.
+- `ZANE_SIZED_TBAA=1` (`lib/codegen/emit.ml`): one-byte scalars (Bool, U8)
+  get a TBAA tag apart from wider ones, both children of the scalar tag,
+  since a place is only read back as a type of the size it was written as.
+  It did not keep Huffman decode's `tree.root` in a register (the reload
+  there is register pressure, not aliasing).
+
 ## What remains
 
-- Move the other byte ports (Huffman, LZW, Base64, Arith, CRC32, SHA256,
-  the Brainfuck tape) to `U8`.
+- Base64 is a C library call in both languages; CRC32 and SHA256 (0.97,
+  0.86) and Arith (1.00, 1.08) were left on `Buffer`.
+- Brainfuck needs the tape's fields in registers across the interpreter
+  loop: a frame the runtime cannot reach while the loop runs, or scalar
+  promotion done by codegen before LLVM inlines.
+- Brainfuck::Recursion re-reads `ops`'s count and checks `ops[i]` on every
+  step; `ListRef` is a reference type, so hoisting needs proof that nothing
+  in the loop can reach it mutably.
 - The Json gap (step 4).

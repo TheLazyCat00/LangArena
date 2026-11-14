@@ -538,13 +538,88 @@ NeuralNet 1.25, HuffDecode 1.25, Matmul::T16/T4/T8 1.19/1.17/1.17,
 CacheSimulation 1.18, Sort::Merge 1.16, Etc::TextRaytracer 1.12,
 Sort::Quick 1.12, Matmul::Single 1.10.
 
+## Step 15: the Brainfuck gap, by wall time
+
+Brainfuck::Array 1.41× C and Brainfuck::Recursion 1.41× (`bench1.py`, 6
+rounds pinned, step 14's best build). Compiler `perf/zane-vs-c` 53f09ab.
+
+**The assembly.** C's `BrainfuckArray_execute_program` keeps pc, tape
+pointer, position, size and result in registers and dispatches every
+command, brackets included, through one jump table: 12 instructions for a
+`+`. Zane's `runArray` loop: 22. It loads the tape's items, count and
+position from the frame for every command, and the commands list's count
+and items too; tests `[` and `]` with two compares before a jump table of
+the rest; checks `commands[pc]` and `bytes[position]`; and counts a second
+counter down, `step!to(Int(9223372036854775807))`, the port's way to write
+C's `while`, since core's only loop is the counted `to`.
+
+**Pricing each difference in C first** (`brainfuck/harness.c`: C's
+interpreter with the port's differences switched on one at a time, gcc
+`-O2`, 3 runs): checks +33%, the two bracket compares +20%, the second
+counter +21%, 8-byte commands and jumps +14%, the write-through stores
+nothing. They do not add: all of them together is 1.35×, and taking any one
+away from that makes it slower (1.40–1.76×). An interpreter's dispatch is
+that sensitive to its branches' placement, so each difference was then
+measured in Zane.
+
+**In Zane** (Zane / C, medians of 6 pinned rounds; the step-9 set with
+`LENT_OWNERS` under each row):
+
+| build | Array | Recursion |
+| --- | ---: | ---: |
+| step 14's best | 1.41 | 1.38 |
+| `ZANE_FRAME_SHADOW=1` | 1.36 | 1.39 |
+| shadow, `ZANE_ENDLESS=1` | 1.10 | 1.12 |
+| shadow, `ENDLESS`, `ZANE_NO_CHECKS=1` (unsound) | 0.88 | 1.01 |
+| shadow, `ENDLESS`, `ZANE_NO_CHECKS=stride:1` (tape only) | 0.97 | 0.96 |
+| shadow, `ENDLESS`, `ZANE_NO_CHECKS=stride:8` (commands, jumps) | 1.16 | 1.05 |
+| shadow, port reads the cell where C does | 1.13 | 1.21 |
+| shadow, `ENDLESS`, port reads the cell where C does | 1.11 | 1.24 |
+
+- **`ZANE_FRAME_SHADOW`** (step 13) keeps the tape's fields in registers
+  here, since `arrayCommand` is inlined and the tape is a local; −4% on
+  Array. It keeps writing them through to the frame, which the harness
+  says costs nothing.
+- **`ZANE_ENDLESS=1`** (new, `emit.ml`): a `repeat` whose count is a
+  constant of at least 2^62 is not tested. Going round that often takes
+  centuries, so only a loop its body leaves ends; it departs from the spec,
+  which stops the loop after its count. It removes one fused `dec`/`je` per
+  command and is worth 19% on both tests (Recursion's `runLoop` uses the
+  same idiom). The loop's "search" branch weight is not the reason:
+  `ZANE_ENDLESS=2`, the test kept without the weight, changes nothing.
+  Graph and Maze use the idiom too, around loops with more work in them;
+  all six are unchanged within noise.
+- **The checks are the rest.** `ZANE_NO_CHECKS` (new, unsound, for
+  pricing only) drops every list index check, or those of `stride:N`-byte
+  elements. The tape's checks, one per command, are what costs: without
+  them both tests are faster than C.
+- **Port change: read the cell only where C does.** `command` and
+  `arrayCommand` began with `value Int=Int(this.bytes[this.position])`
+  for every command, `<` and `>` included, which in C never touch the
+  tape; a checked read may stop the program, so LLVM cannot sink it into
+  the arms that use it. Now `+`, `-` and `.` read it themselves. With
+  it, `runArray`'s dispatch is one jump table over all seven commands, as
+  C's switch is. Alone it is worth as much as `ENDLESS`; the two together
+  are no faster than either.
+
+What is left in `runArray`'s loop with both: a `+` is 20 instructions
+against C's 12. The extra ones are the exit test `pc > count` followed by
+the check `pc - 1 <u count` (two compares of nearly one bound), the tape
+check `position - 1 <u count`, and a `mov` that zero-extends the 32-bit
+list count before each compare.
+
 ## What remains
 
 - Base64 is a C library call in both languages; CRC32 and SHA256 (0.97,
   0.86) and Arith (1.00, 1.08) were left on `Buffer`.
-- Brainfuck needs the tape's fields in registers across the interpreter
-  loop; `ZANE_FRAME_SHADOW` (step 13) covers frame slots, not the tape
-  reached through `this`.
+- Brainfuck (step 15) is at 1.10–1.24× C with `FRAME_SHADOW`, `ENDLESS`
+  and the cell change. Without the tape's checks both tests beat C. The
+  tape check stands on an invariant LLVM does not prove (1 ≤ position ≤
+  count: `>` pushes when position passes the count, `<` stops at 1, the
+  list never shrinks). Cheaper: fold `runArray`'s exit test `pc > count`
+  and the check of `commands[pc]` into one unsigned compare, with the exit
+  and the stop told apart off the hot path. A conditional loop in core
+  would replace `ENDLESS`.
 - Placement: a 25% swing on HuffDecode from code layout alone makes small
   gains unmeasurable one test at a time.
 - Brainfuck::Recursion re-reads `ops`'s count and checks `ops[i]` on every

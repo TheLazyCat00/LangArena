@@ -15,12 +15,12 @@ Tape() => init {
 }
 
 Unit command(this Tape, op Int) mut {
-  value Int=Int(this.bytes[this.position]);
+  // As C: only the commands that use the current cell read it.
   if(op==43) {
-    this.bytes[this.position]=U8.wrap(value+1);
+    this.bytes[this.position]=U8.wrap(Int(this.bytes[this.position])+1);
   }
   if(op==45) {
-    this.bytes[this.position]=U8.wrap(value+255);
+    this.bytes[this.position]=U8.wrap(Int(this.bytes[this.position])+255);
   }
   if(op==62) {
     this.position=this.position+1;
@@ -32,7 +32,7 @@ Unit command(this Tape, op Int) mut {
     this.position=max(Int(1), this.position-1);
   }
   if(op==46) {
-    this.result=u32(this.result*4+value);
+    this.result=u32(this.result*4+Int(this.bytes[this.position]));
   }
   return Unit();
 }
@@ -41,12 +41,12 @@ Unit command(this Tape, op Int) mut {
 // tape functions, each copy then has one caller, which LLVM inlines; a
 // shared command has three call sites and stays a call per command.
 Unit arrayCommand(this Tape, op Int) mut {
-  value Int=Int(this.bytes[this.position]);
+  // As C: only the commands that use the current cell read it.
   if(op==43) {
-    this.bytes[this.position]=U8.wrap(value+1);
+    this.bytes[this.position]=U8.wrap(Int(this.bytes[this.position])+1);
   }
   if(op==45) {
-    this.bytes[this.position]=U8.wrap(value+255);
+    this.bytes[this.position]=U8.wrap(Int(this.bytes[this.position])+255);
   }
   if(op==62) {
     this.position=this.position+1;
@@ -58,7 +58,7 @@ Unit arrayCommand(this Tape, op Int) mut {
     this.position=max(Int(1), this.position-1);
   }
   if(op==46) {
-    this.result=u32(this.result*4+value);
+    this.result=u32(this.result*4+Int(this.bytes[this.position]));
   }
   return Unit();
 }

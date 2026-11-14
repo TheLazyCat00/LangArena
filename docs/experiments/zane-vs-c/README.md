@@ -657,8 +657,8 @@ fast as none (1.15–1.27 s).
 
 The two loops then differ by one instruction. At a leaf, `current =
 tree.root` is `mov 0x100(%rsi),%r13` without the copy and `mov %rdi,%r15`
-with it; every other instruction is the same up to register names. A
-register copy run 25% slower than a load from the frame. Without counters
+with it; every other instruction is the same up to register names. The
+register copy runs 25% slower than a load from the frame. Without counters
 the reason is not known. `root` is written by the tree's build, through
 the frame's address, and `decode` never stores it: the copy holds a value
 in a register across the loop that the loop reads only once per symbol.

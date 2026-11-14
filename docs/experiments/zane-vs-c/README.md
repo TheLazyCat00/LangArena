@@ -632,7 +632,62 @@ step; all 50 checksums pass.
   are the same in both builds here (Array 1.00, Recursion 0.99): the cell change is in the
   base too, and `ENDLESS` and the shadow add nothing to it.
 
+## Step 16: why `ZANE_FRAME_SHADOW` slows HuffDecode
+
+Step 15's full set (every sound switch) runs HuffDecode 30% slower than
+the same set without `FRAME_SHADOW`. Compiler `perf/zane-vs-c` 5c95fa1,
+which adds the switches below; times are `bench1.py` medians, 5–6
+rounds pinned. No hardware counters here (`perf_event_open` gives
+ENOENT), so wall time only.
+
+**Not placement.** The hot loop is the same code in both builds. Aligning
+it differently doesn't close the gap: every loop to 16, 32 or 64 bytes
+(`ZANE_LLVM_EXTRA=-align-loops=N`, new) leaves the shadow build at
+1.35–1.41 s. Every non-fallthrough block aligned gives 1.34 s against
+1.13 s without the shadow, and every block aligned 1.48 s against 1.22 s.
+
+**One slot of one function.** `ZANE_FRAME_SHADOW_ONLY` / `_SKIP` (new:
+function-name substrings) and `ZANE_FRAME_SHADOW_OFFSETS` (new: slot
+offsets) bisect it. Copies only in `huffman$decode`: 1.38 s; everywhere
+but there: 1.07 s; the passes re-run with no copies (`SKIP=` empty):
+1.11 s. Of `decode`'s five slots (`tree.nodes` items 224 and count 232,
+`tree.root` 256, the `data` and `out` buffers 296 and 312), the copy of
+`root` alone gives the whole loss (1.47 s); each other one alone is as
+fast as none (1.15–1.27 s).
+
+The two loops then differ by one instruction. At a leaf, `current =
+tree.root` is `mov 0x100(%rsi),%r13` without the copy and `mov %rdi,%r15`
+with it; every other instruction is the same up to register names. A
+register copy run 25% slower than a load from the frame. Without counters
+the reason is not known. `root` is written by the tree's build, through
+the frame's address, and `decode` never stores it: the copy holds a value
+in a register across the loop that the loop reads only once per symbol.
+
+**Two rules tried, neither a fix.** `ZANE_FRAME_SHADOW_DEBUG` now prints
+each slot's store count; 121 of the program's 275 copied slots have no
+store in their function, 105 one.
+
+| build | HuffDecode | HuffEncode | GameOfLife | Graph::DFS |
+| --- | ---: | ---: | ---: | ---: |
+| no shadow | 1.16–1.20 | 0.54–0.57 | 0.66–0.83 | 1.23 |
+| full shadow | 1.44–1.47 | 0.58 | 0.66–0.90 | 1.24–1.31 |
+| `ZANE_FRAME_SHADOW_WRITTEN=1` (only slots stored twice or more) | 1.22 | 0.70 | 0.77 | 1.28 |
+| `ZANE_FRAME_SHADOW_WRITTEN=2` (only slots stored at least once) | 1.24 | 0.68 | 0.75 | 1.27 |
+
+Both rules fix most of HuffDecode and make HuffEncode slower than both no
+shadow and full shadow. Over all 50 tests (`ab.py`, 4 rounds),
+`WRITTEN=1` is 1.024 against full shadow (`step16-ab-shadow-vs-written.md`)
+and 0.985 against no shadow (`step16-ab-noshadow-vs-written.md`). Graph::DFS,
+whose −10% under the shadow step 13 measured, shows no gain from it in
+these pinned runs.
+
 ## What remains
+
+- `FRAME_SHADOW`'s HuffDecode loss (step 16) is one register copy of a
+  value read once per symbol; a store count does not tell such a slot
+  from the ones worth copying. Next: a rule on where the slot is read
+  (only off the loop's hot path), or hardware counters on another
+  machine to learn why the register copy is slower.
 
 - Base64 is a C library call in both languages; CRC32 and SHA256 (0.97,
   0.86) and Arith (1.00, 1.08) were left on `Buffer`.

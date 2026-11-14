@@ -27,11 +27,12 @@ Of the 10 slow tests:
 
 ## Port fixes on zane-perf (class a)
 
-Sixteen commits, newest first, make the port do the same work as C; each kept
+Seventeen commits, newest first, make the port do the same work as C; each kept
 all 50 checksums OK. Times are `run.js` wall-clock on the measuring machine.
 
 | Commit | Test | Port did extra work | Before → after | C |
 | --- | --- | --- | --- | --- |
+| 76bc235 | Brainfuck::Array | `command` was shared with the Recursion runner, so it had three call sites and LLVM did not inline it (R8): a call of about 25 instructions per command. C's two runners each have their own tape functions. `runArray` now has its own copy, which is inlined | 2.18 → 1.85 s | 1.30 s |
 | e004415 | Compress::LZWEncode | a foreign `character()` call allocated a one-byte string for every input byte (20.4M per run); C builds it in a two-byte stack buffer. The 256 strings are now made once per encode | 28.5G → 25.4G instructions; 1.80 → 1.68 s | 1.373 s |
 | cff5968 | Etc::CacheSimulation (every `StringMap`) | the slot was the mixed hash modulo the table size, which reads only its low bits: the `item_N` keys clustered, 3.7 probes per lookup at load 0.5 where 1.1 is expected, and a divide per probe. uthash uses a power-of-two table. Now a power-of-two table, the top bits of a 64-bit Fibonacci multiply, and no divide | 1.114 → 0.766 s | 0.692 s |
 | 835f952 | Etc::LogParser (and Template::Regex's matches) | the regex verbs took the subject as `const char *`, so every call copied the 7.15 MB log into a fresh NUL-terminated block and ran `strlen` over it, 156 times per run; C passes the pointer and length. Now `zane_bytes`, and `pcre2_jit_match` as in C | 0.621 → 0.522 s | 0.506 s |
@@ -338,11 +339,10 @@ This corrects R5's note that `command` stays out of line because the port's C
 - **The Buffer is not the cause.** With the tape as a native `List<Int>`,
   the remark and the cost are the same, and the times are no better
   (Array 1.87×, Recursion 1.60×).
-- **Measured** (experiments, not committed, since inlining `command` was
-  decided to be left alone; this is the evidence to revisit that):
+- **Measured:**
   - Giving `runArray` its own copy of `command` gets it inlined.
     Brainfuck::Array 2.24 s → 1.85 s (1.73× → 1.40× C). Recursion is
-    unchanged.
+    unchanged. Committed to the port as 76bc235.
   - Also skipping the two loop copies when the loop body calls a function
     (an env-gated compiler change) inlines `command` into `runOps` too.
     Recursion 2.40 s → 2.25 s, but Array went 1.85 s → 2.0 s in the same
@@ -437,7 +437,7 @@ Callgrind totals for the whole process at full size, input setup included.
 
 | Test | C (s) | Zane (s) | Zane / C | Issues | What the profile shows |
 | --- | --- | --- | --- | --- | --- |
-| Brainfuck::Array | 1.302 | 2.175 | 1.67 | R8 | 33.3G vs 13.3G instructions; `command` called once per command (three call sites, cost 315 > 225); one `command` per runner gives 1.40× |
+| Brainfuck::Array | 1.302 | 2.175 | 1.67 | R8 | 33.3G vs 13.3G instructions; `command` called once per command (three call sites, cost 315 > 225). Fixed in the port since (76bc235): 1.85 s, 1.43× |
 | Brainfuck::Recursion | 1.479 | 2.408 | 1.63 | R8, R5 | 35.6G vs 18.6G instructions; `command` not inlined (its loop is emitted twice); a variant match, then the op switch, per op |
 | Json::ParseDom | 0.079 | 0.112 | 1.42 | open | 2.25G vs 1.72G instructions for the whole process (see the open question) |
 | Json::ParseMapping | 0.212 | 0.299 | 1.41 | open | see the open question |
@@ -579,6 +579,6 @@ and the repro under its issue is the test to make pass first.
 7. **Move a held local at its last read (R7).** LZWEncode at 1.22×; the
    prototype brings it to C's speed once the if/else branches are treated
    as exclusive.
-8. **Get Brainfuck's `command` inlined (R8).** One `command` per runner in
-   the port (Array 1.67× → about 1.40×), and a loop that calls emitted once
-   rather than twice for Recursion.
+8. **Get Brainfuck::Recursion's `command` inlined (R8).** Array's is
+   (76bc235, 1.43×); Recursion needs a loop that calls emitted once rather
+   than twice.

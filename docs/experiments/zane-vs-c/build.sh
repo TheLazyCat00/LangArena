@@ -10,6 +10,20 @@ COMPILER=${COMPILER:-/home/user/compiler}
 T=$HOME/.zane/toolchains
 [ -d "$T/dev" ] || cp -r "$T/v0.36" "$T/dev"
 cp "$COMPILER/_build/default/bin/zanec/zanec.exe" "$T/dev/libexec/zanec"
+# A changed runtime is not in the release's bundle, and zanec would compile
+# it with `zig cc`, whose bitcode its LLVM cannot read, so no runtime body
+# would be inlined. Bundle it as a release does (dev/release/common.py),
+# its bitcode by the pixi environment's clang 21, once per runtime.
+stamp=$(cat "$COMPILER"/runtime/*.[ch] | md5sum | cut -c1-32)
+if [ ! -e "$T/dev/share/runtime/.stamp-$stamp" ]; then
+  for o in "" --optimize; do
+    env -u ZIG -u ZANE_RUNTIME_OBJECTS ZANE_CC="$T/dev/bin/zig-cc" \
+      ZANE_BITCODE_CC="$COMPILER/dev/release/bitcode-cc" \
+      ZANE_BITCODE_CLANG="$COMPILER/.pixi/envs/default/bin/clang" \
+      "$T/dev/bin/zanec" --bundle-runtime "$T/dev/share/runtime" --target x86_64-linux-gnu $o
+  done
+  touch "$T/dev/share/runtime/.stamp-$stamp"
+fi
 cd "$(dirname "$(readlink -f "$0")")/../../../zane"
 ZANE_COMPILER="$T/dev/bin/zanec" "${ZANE:-zane}" build 2>&1 | grep -v 'LLD could not\|unable to find library' || true
 if [ -n "${1:-}" ]; then cp out/host/zane "$1"; fi

@@ -140,7 +140,8 @@ Port: `codec.frequencies` and `bwt.encode/decode` read the String's bytes
 and build a `List<U8>` instead of an `arena$Buffer`.
 
 **Results.** `decode` 450M → 290M instructions (C: 264M), `frequencies`
-143M → 77M. Compress::BWTDecode 4.392G → 3.932G (−10.5%); BWTEncode
+143M → 77M. Compress::BWTDecode 4.392G → 3.932G (−10.5%; 3.890G with the
+runtime bundled, step 7); BWTEncode
 unchanged (its time is the suffix sort). All 50 checksums OK; compiler
 tests and core's tests pass.
 
@@ -150,10 +151,50 @@ promote them to registers because the loop's bounds check makes the push
 conditionally executed (reproduced in a small IR file: without the check,
 no count access stays in the loop).
 
+## Step 7: the runtime bundle, and a correction
+
+The dev toolchain is a copy of v0.36's, whose `share/runtime` bundles
+the runtime compiled from v0.36's sources. Once the experiment branch
+changed the runtime (step 6's `zane_text_bytes`), zanec no longer found it
+in the bundle and compiled it with `zig cc`, whose bitcode its LLVM 21
+cannot read, so no runtime body was inlined (Runtime_bodies): CacheSimulation
++10% instructions, Words +4.5%, CSV +2%, with the port unchanged.
+`build.sh` now bundles the changed runtime as a release does
+(`zanec --bundle-runtime`, bitcode by the pixi environment's clang 21
+through `dev/release/bitcode-cc`), once per runtime. Step 6's totals are
+restated with it: BWTDecode 4.392G → 3.890G, HuffEncode 1.433G → 1.273G and
+ArithEncode 0.876G → 0.836G (both use `codec.frequencies`).
+
+## Step 8: three switches revisited
+
+`instr.py` over all 50 tests, each switch alone against the build without
+switches, found two regressions, both fixed:
+
+- `ZANE_ASSIGN_MOVES=1` made Brainfuck::Recursion +22% (0.596G → 0.725G).
+  Its "taken once, so a `let`" rewrite also caught holds whose move a
+  return had already made (`returned_moves`), which the later fold turns
+  into a plain value with no arena at all; the rewrite left an empty arena
+  around `ops!push(Op.loop(this!parse()))`, and each push moved the value
+  through the runtime. The rewrite now applies only to a hold this pass
+  gave its move. Recursion 0.596G again; LZWEncode keeps −32%.
+- `ZANE_VERSION_CALLS=0` (any call keeps a loop single) cost SHA256 +3.5%
+  and Maze a little: their loops call small functions with many callers,
+  which LLVM inlines anyway, and lost IRCE's unchecked copy.
+  `ZANE_VERSION_CALLS=1` keeps a loop single only when it calls a function
+  with one call site in the program, the case where two copies cost LLVM's
+  single-caller inline bonus: Recursion −6% as before, SHA256 and Maze
+  unchanged.
+
+`ZANE_LOOP_REGS=1` (new, `lib/codegen/emit.ml`): a loop whose pushes were
+reserved up front (`Loop_shapes.looped_pushes`) reads the list's block once
+before it and keeps its count in a local, storing the count back after each
+push, so the push reloads nothing. LICM could not do it: the loop's bounds
+checks make the push conditionally executed, which blocks its scalar
+promotion. BWT's decode loop is now 13 instructions per byte; with U8,
+Compress::BWTDecode went from 2.04× C to 0.99× (3 rounds, `measure.py`).
+
 ## What remains
 
-- Keep a pushed-to list's count and block in registers across a loop
-  (step 6).
 - Move the other byte ports (Huffman, LZW, Base64, Arith, CRC32, SHA256,
   the Brainfuck tape) to `U8`.
 - The Json gap (step 4).

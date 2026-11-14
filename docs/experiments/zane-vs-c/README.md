@@ -751,6 +751,18 @@ Sort::Self (×5.7), Calculator::Ast (×7.3), LZWDecode (×5.7), CSV::Parse
 BWTEncode and Binarytrees::Arena; Zane is ahead on Base64 (Goose/gcc
 ×14), CacheSimulation (×2), Maze::AStar, Jaro and the Json tests.
 
+**`ASSIGN_MOVES` was unsound in LZWEncode.** Review of the compiler PR
+(zane-lang/compiler#377) found that the pass replaced a hold with a `let`
+when its only take sat in an `if` body. `lzw$encode`'s `combined` moves
+into `current` on one path and into the dictionary on another, and on the
+third (dictionary full) nothing owned it. A checked run of this step's
+binary (`ZANE_CHECK=1`) stops with "a dynamic block outlived its owner";
+unchecked runs release the loop scope's region in bulk, which hid it.
+Compiler 168a61a keeps the hold unless the take is outside every `if`.
+LZWEncode is then about 19% slower (`bench1.py 5`, median 1.31 s → 1.56 s),
+so this step's LZWEncode figure (0.95× C) was bought by the leak. The
+fixed build passes all 50 tests checked and unchecked.
+
 ## What remains
 
 - `FRAME_SHADOW`'s HuffDecode loss (step 16) is one register copy of a

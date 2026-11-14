@@ -629,7 +629,7 @@ step; all 50 checksums pass.
   HuffDecode is not: 1.14 s → 1.41 s. Without `FRAME_SHADOW` (everything
   else on) it is 1.07 s, so the shadow is the cause, as in step 13, which
   found the loop two loads shorter and placed worse. The Brainfuck tests
-  are the same in both builds here (0.99, 1.00): the cell change is in the
+  are the same in both builds here (Array 1.00, Recursion 0.99): the cell change is in the
   base too, and `ENDLESS` and the shadow add nothing to it.
 
 ## What remains

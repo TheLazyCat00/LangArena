@@ -15,7 +15,10 @@ cp "$COMPILER/_build/default/bin/zanec/zanec.exe" "$T/dev/libexec/zanec"
 # would be inlined. Bundle it as a release does (dev/release/common.py),
 # its bitcode by the pixi environment's clang 21, once per runtime.
 stamp=$(cat "$COMPILER"/runtime/*.[ch] | md5sum | cut -c1-32)
-if [ ! -e "$T/dev/share/runtime/.stamp-$stamp" ]; then
+# Skip bundling only when this runtime's stamp is the only one: stamps left
+# by older runs of this script do not say which runtime is bundled.
+stamps=$(ls -A "$T/dev/share/runtime" | grep -c '^\.stamp-' || true)
+if [ "$stamps" -ne 1 ] || [ ! -e "$T/dev/share/runtime/.stamp-$stamp" ]; then
   rm -f "$T"/dev/share/runtime/.stamp-*
   for o in "" --optimize; do
     env -u ZIG -u ZANE_RUNTIME_OBJECTS ZANE_CC="$T/dev/bin/zig-cc" \

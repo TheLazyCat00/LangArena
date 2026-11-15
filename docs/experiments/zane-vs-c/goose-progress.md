@@ -191,3 +191,15 @@ Maze::Generator 1.5, Template::Parse 1.5, LZWEncode 1.4.
   leaf children written with no call (half of all nodes), and pushes
   through a cursor; ours calls itself for every leaf. A codegen matter
   (recursion peeling); left.
+
+### Sort::Merge (1.56×), Maze::Generator (1.35×): looked at, open
+
+- Sort::Merge: Goose copies the range into temp with one `copy_into`
+  and merges until a side runs out, then copies the left rest only.
+  Goose/gcc is 1.63 s, near ours (1.77); clang's 1.13 likely comes from a
+  branchless pick. Ours: nested branches whose arms read different
+  checked indices. Would want a range-copy intrinsic and if-conversion
+  across checked reads; left.
+- Maze::Generator: same structure (neighbours as 32-bit indices, Goose's
+  as compressed 32-bit references); `adjacentOpen` compiles to a tight
+  unrolled count. Bound by the scattered cell loads; left.

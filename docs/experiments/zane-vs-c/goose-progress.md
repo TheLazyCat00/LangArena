@@ -437,3 +437,28 @@ rounds, minimum of each:
 - `zane_parse_f64` (0.68 s of samples to Goose's `parse_flt` 0.45) is the
   same algorithm as Goose's (digits folded, one division by an exact power
   of ten); its code is as tight; left.
+
+### Calculator::Ast: 0.21–0.23 → 0.17 s (Goose/clang 0.15–0.21)
+
+- Compiler `ZANE_IDLE_SEARCH=1` (`Loop_shapes.idle_counter`): a loop that
+  can leave early, holds no loop, and whose counter nothing in its body
+  reads but its own step (a `to` that stands for a `while`) is weighted
+  as a search (4 trips), as `searches` weights a scan, so IRCE leaves it
+  whole. `whitespace`'s position is a field `advance()` moves, which
+  `scans` cannot see.
+
+## Re-measure (step 24, `step24-goose.json`, `step24-goose.md`)
+
+Everything through `ZANE_IDLE_SEARCH`, against the step-23 binary (`old`):
+
+- Zane / Goose-clang geomean 1.073 (faster on 16), Zane / Goose-gcc
+  0.930 (faster on 27); the step-23 binary in the same run: 1.076, 0.933
+  (this run was quieter than step 23's).
+- Against the step-23 binary: LogParser 0.75, CSV::Parse 0.77,
+  Calculator::Ast 0.78, Binarytrees::Obj 0.83. The slower rows
+  (CacheSimulation 1.28, Template::Regex 1.13, HuffDecode 1.12,
+  Maze::Generator 1.11) swing as much between reruns of one binary
+  (CacheSimulation 0.95–1.48 s), and reruns show no consistent change.
+- Worst left: HuffDecode 2.28, Binarytrees::Arena 1.66, LogParser 1.63,
+  Template::Parse 1.50, Maze::Generator 1.49, Template::Regex 1.43,
+  ArithEncode 1.38, GameOfLife 1.37, LZWEncode 1.35, CSV::Parse 1.32.

@@ -182,3 +182,12 @@ Maze::Generator 1.5, Template::Parse 1.5, LZWEncode 1.4.
   load missing cache in a 6 MB table (3×50000 keys); reverted. Copying
   `this.textBytes` into a local cost a whole-list copy per step (lists
   are values): read fields in place.
+
+### Binarytrees::Arena (1.5–1.8×): open
+
+- Same structure and node layout (three 32-bit values). Same page
+  faults and system time; user time 0.73 vs 0.49 s, all in `build`
+  (`sum` is even). Goose/clang's `build` handles depth 1 in place, both
+  leaf children written with no call (half of all nodes), and pushes
+  through a cursor; ours calls itself for every leaf. A codegen matter
+  (recursion peeling); left.

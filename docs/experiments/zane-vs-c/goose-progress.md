@@ -84,4 +84,25 @@ Maze::Generator 1.8, Words 1.7, Interpreter 1.6, Sort::Merge 1.5.
   (`arena/maps.zn`), StringMap's slots keyed by ranges of the one text.
 - Left (Ast): `whitespace` is 35%, nearly all of it IRCE's safe-range
   setup for a loop that runs 0–1 times (`i!to(bound)` stands for a
-  `while`). Without IRCE: 0.133 s. Measuring the suite with/without.
+  `while`). Without IRCE: 0.133 s.
+- IRCE measured (`ZANE_NO_IRCE_BUILD=1`, and `ZANE_TRY_LLVM` for options;
+  both experiment switches, out before any PR). Off: geomean 0.987, Ast
+  0.70, BFS 0.84, but Matmul::T8 1.15, GameOfLife 1.17, BWTEncode 1.11.
+  `-irce-min-eliminated-checks=40` (default 10): Ast 0.71 but Maze::AStar
+  1.32, Template::Regex 1.28, Maze::BFS 1.24, geomean 1.021. No global
+  setting wins; the default stays. A fix needs IRCE to skip a short
+  search loop (an exit on loaded data) and keep counted ones.
+
+### LZWEncode: 1.46 → 0.72 s (Goose/clang 0.51; 3.2× → 1.4×)
+
+- Goose: every string a slice of one growing byte array (`new_string`,
+  `concat` append there), its dictionary keyed by slices, hashed by
+  lanes and compared by `memeq`. Port had String concatenation and a
+  StringMap; now has that layout with `BytesMap` (`arena/maps.zn`) keyed
+  by ranges of a `List<U8>`, sized for every code (≤65536).
+- Byte-at-a-time hash and compare in Zane were 90%, so compiler 9b72f6d
+  + core 0ca5428: `List.sameRange` (one memcmp) and `List.hashRange` (four
+  lanes over 32-byte blocks, the tail read with fixed loads, no memcpy
+  call); integers only (fixtures `listRanges`, `reject/rangeFloats`).
+- Left: the hash (one per lookup, three per miss, as Goose) and cache
+  misses on the slot and the stored key, which Goose has too.

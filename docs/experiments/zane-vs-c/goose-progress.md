@@ -492,3 +492,29 @@ the eight neighbours as `Array<I32,8>`. The step loop is fully unrolled;
 what is left per neighbour is the checked index (`movslq; dec; cmp; jae`)
 and the ×34 element scaling (`mov; shl; lea`), against Goose's unchecked
 byte offset.
+
+### Frame shadow miscompile found and fixed
+
+Building with `ZANE_LLVM_OPTS=-inline-threshold=400` (new: extra LLVM
+options) made BWTDecode fail its checksum. Bisected to `ZANE_FRAME_SHADOW`,
+in `bwt$encode`, slots 288/296: the `ranks` list. `ranks=nextRanks` calls
+`List<I32>.overwrite(slot, …, jobs)`, which keeps the slot's address in a
+deferred job, and the inlined job loop after it runs the job by an
+indirect call given only what it loaded from the job list. The pass
+filled its copies again only after calls given a frame address, so the
+round loop read a stale `ranks`. Now a frame address given to a
+parameter not marked `captures(none)` makes the frame escaped, and the
+copies are filled after every later call. The default build was right
+only by luck of inlining. New bisecting switches: `ZANE_FRAME_SHADOW_ONLY`
+(function name), `ZANE_FRAME_SHADOW_SLOTS`, `ZANE_SHADOW_AGAIN`,
+`ZANE_DUMP_BEFORE`/`ZANE_DUMP_AFTER=<experiment>=<path>`.
+
+### ArithEncode (1.52 s, Goose/clang 1.10)
+
+- `BitWriter` now writes into a `List<U8>`, as Goose's bit stream does
+  (was the FFI `Buffer`): 1.52 → 1.45.
+- Left: Goose's compiler divides by `total`, which the loop never changes,
+  through a libdivide-style reciprocal made before the loop (no `div` in
+  its loop); ours does two 64-bit `idiv` per symbol. Our divisor is also
+  reloaded from the frame after every `emit` call, which LLVM does not
+  inline (inlining it at threshold 400 gains nothing).

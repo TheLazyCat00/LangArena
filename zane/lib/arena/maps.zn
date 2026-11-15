@@ -176,3 +176,94 @@ Int add(this StringMap, key String, amount Int) mut {
   this.values[entry]=value;
   return value;
 }
+
+// A map from slices of one text to Ints, as Goose's dictionary keyed by
+// `const u8[:]`: a key is where its bytes start in the text and how many
+// there are, so no key is copied out. Every call names the same text.
+// Slots as StringMap's, the same djb2 hash over the key's bytes.
+type SliceMap = struct {
+  slots List<Int>;
+  starts List<Int>;
+  lengths List<Int>;
+  values List<Int>;
+  entries Int;
+  shift Int;
+}
+
+SliceMap(capacity Int) => init {
+  slots=filled(shiftLeft(Int(1), tableBits(capacity)), Int(0));
+  starts=List(Int);
+  lengths=List(Int);
+  values=List(Int);
+  entries=Int(0);
+  shift=Int(64)-tableBits(capacity);
+}
+
+Int hash(text String, start Int, count Int) {
+  value Int=Int(5381);
+  i Int=start;
+  i!to(start+count-1) {
+    value=u32(value*33+Int(text:byteAt(i)));
+  }
+  return value;
+}
+
+Bool same(text String, left Int, right Int, count Int) {
+  i Int=Int(0);
+  i!to(count-1) {
+    if(text:byteAt(left+i)~=text:byteAt(right+i)) {
+      return Bool(false);
+    }
+  }
+  return Bool(true);
+}
+
+Int slot(this SliceMap, text String, start Int, count Int) {
+  capacity Int=this.slots:size();
+  index Int=shiftRightLogical(hash(text, start, count)*(Int(0)-Int(7046029254386353131)), this.shift)+1;
+  probe Int=Int(1);
+  probe!to(capacity) {
+    entry Int=this.slots[index];
+    if(entry==0) {
+      return index;
+    }
+    if(this.lengths[entry]==count and same(text, this.starts[entry], start, count)) {
+      return index;
+    }
+    index=index+1;
+    if(index>capacity) {
+      index=Int(1);
+    }
+  }
+  return Int(0);
+}
+
+Int get(this SliceMap, text String, start Int, count Int) {
+  index Int=this:slot(text, start, count);
+  if(index==0) {
+    return Int(0);
+  }
+  entry Int=this.slots[index];
+  if(entry==0) {
+    return Int(0);
+  }
+  return this.values[entry];
+}
+
+Unit put(this SliceMap, text String, start Int, count Int, value Int) mut {
+  index Int=this:slot(text, start, count);
+  if(index>0) {
+    entry Int=this.slots[index];
+    if(entry==0) {
+      this.starts!push(start);
+      this.lengths!push(count);
+      this.values!push(value);
+      this.entries=this.entries+1;
+      this.slots[index]=this.entries;
+    }
+    if(entry>0) {
+      this.values[entry]=value;
+    }
+  }
+  return Unit();
+}

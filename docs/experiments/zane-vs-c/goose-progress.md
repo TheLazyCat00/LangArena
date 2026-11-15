@@ -72,3 +72,16 @@ Maze::Generator 1.8, Words 1.7, Interpreter 1.6, Sort::Merge 1.5.
   has only counted loops (`to`/`repeat`), no `while`/`break`, so the
   port toggles a quote flag per byte. A conditional loop is a language
   decision → question for the user.
+
+### Calculator::Ast: 0.41 → 0.19 s (Goose/clang 0.11); Interpreter 0.48 → 0.425 (Goose 0.445)
+
+- Goose's AST names are slices of the input (`p.input[start..pos]`), and
+  its interpreter's dictionary is keyed by `const u8[:]`. Port had a
+  String per name (`slice` → an allocation, a held block, a free, a
+  Node move) and read bytes through the FFI `Buffer`.
+- Port now: `Name { start; length }` in the nodes, the parser reads its
+  String with `byteAt`, and the interpreter uses `SliceMap`
+  (`arena/maps.zn`), StringMap's slots keyed by ranges of the one text.
+- Left (Ast): `whitespace` is 35%, nearly all of it IRCE's safe-range
+  setup for a loop that runs 0–1 times (`i!to(bound)` stands for a
+  `while`). Without IRCE: 0.133 s. Measuring the suite with/without.

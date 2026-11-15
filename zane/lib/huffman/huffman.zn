@@ -9,6 +9,8 @@ type Node = struct {
   frequency I32;
   value U8;
   leaf Bool;
+  padA U8;
+  padB U8;
   left I32;
   right I32;
 }
@@ -17,6 +19,8 @@ Node(frequency Int, value Int, left Int, right Int) => init {
   frequency=I32.wrap(frequency);
   value=U8.wrap(value);
   leaf=left==0 and right==0;
+  padA=U8(0);
+  padB=U8(0);
   left=I32.wrap(left);
   right=I32.wrap(right);
 }

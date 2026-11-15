@@ -665,3 +665,21 @@ against Goose's clang and gcc builds.
   diagnostic copy of every list into fresh, packed lists in vertex order
   after `prepare` gave only 1.614 → 1.572 (Goose 1.341), so placement is
   not the cause. Reverted.
+
+### `ZANE_BIASED_BASE`: the 1-based index's `- 1` off the address chain
+
+The element address was `base + (index - 1) * stride`, and the `index - 1`
+is shared with the bounds check, so a loaded index (a tree's child, a
+graph's neighbor) went through a `dec` before it was scaled. With
+`ZANE_BIASED_BASE=1` (compiler `lib/codegen/emit.ml`, `element`) the
+address is `(base - stride) + index * stride`: the biased base is loop-
+invariant and the check keeps its own `index - 1`. 50/50 checks pass.
+
+- HuffDecode 1.486 → 1.368 (Goose/clang 0.69); Graph::BFS 1.595 →
+  1.578 and Binarytrees::Arena 0.484 → 0.543, both within noise
+  (5 interleaved rounds).
+- With the bias, HuffDecode's 14-byte node padded to 16 bytes (two
+  spare `U8` members, so the stride is a shift): 1.367 → 0.949. Without
+  the bias the same padding measured no gain earlier (step 23-24); the
+  re-check of that is still to run. The padded node is in the port for
+  now.

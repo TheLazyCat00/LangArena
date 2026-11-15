@@ -295,6 +295,27 @@ Unit put(this SliceMap, text String, start Int, count Int, value Int) mut {
   return Unit();
 }
 
+// Adds amount to the slice's value, inserting it with value amount when
+// it is absent, and returns the new value: one probe.
+Int add(this SliceMap, text String, start Int, count Int, amount Int) mut {
+  index Int=this:slot(text, start, count);
+  if(index==0) {
+    return Int(0);
+  }
+  entry Int=this.slots[index];
+  if(entry==0) {
+    this.starts!push(start);
+    this.lengths!push(count);
+    this.values!push(amount);
+    this.entries=this.entries+1;
+    this.slots[index]=this.entries;
+    return amount;
+  }
+  value Int=this.values[entry]+amount;
+  this.values[entry]=value;
+  return value;
+}
+
 // SliceMap's slots keyed by ranges of one byte list rather than of a
 // String, for keys that are made as the list grows (Goose's LZW strings).
 // As Goose's dictionary, a key is hashed and compared a word at a time

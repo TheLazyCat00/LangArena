@@ -164,3 +164,9 @@ Maze::Generator 1.5, Template::Parse 1.5, LZWEncode 1.4.
   probe per gram (`update`), two for the second (`get_or_insert`, `get`).
 - `IntMap` now has power-of-two slots from a Fibonacci hash and a
   one-probe `add` (as StringMap's); NGram as Goose's, with `byteAt`.
+
+### Words: 0.88 → 0.54 s (Goose/clang 0.55; 1.7× → 1.0×)
+
+- Goose's dictionary is keyed by word slices of the text; the port made a
+  String per word (`slice` of an FFI Buffer). Now the text is a String
+  and the words count in a `SliceMap` (new one-probe `add`).

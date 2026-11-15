@@ -136,4 +136,5 @@ Maze::Generator 1.8, Words 1.7, Interpreter 1.6, Sort::Merge 1.5.
   load chain. Goose: branchless child offset from the bit, the 8-bit loop
   fully unrolled, a leaf flag byte, node pointers (no index scaling).
   Ours: `b!to(min(8, remaining))` is not unrolled, the leaf test reads two
-  fields. Left open.
+  fields. Whole bytes in a constant `b!to(8)` loop (the last byte after)
+  was slower too, 1.30. Left open.

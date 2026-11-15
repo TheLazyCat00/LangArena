@@ -23,8 +23,13 @@ __attribute__((constructor)) static void start(void) {
      ITIMER_PROF, which fires on the kernel's tick. SAMPLER_US sets the
      period (default 50). Wall time: run the program pinned and alone. */
   long us = getenv("SAMPLER_US") ? atol(getenv("SAMPLER_US")) : 50;
+  if (us <= 0) { fprintf(stderr, "sampler: SAMPLER_US must be positive\n"); return; }
   struct sigevent ev = {0}; ev.sigev_notify = SIGEV_SIGNAL; ev.sigev_signo = SIGPROF;
-  timer_t id; timer_create(CLOCK_MONOTONIC, &ev, &id);
-  struct itimerspec t = {{0, us * 1000}, {0, us * 1000}}; timer_settime(id, 0, &t, 0);
+  timer_t id;
+  struct timespec p = {us / 1000000, (us % 1000000) * 1000};
+  struct itimerspec t = {p, p};
+  if (timer_create(CLOCK_MONOTONIC, &ev, &id) || timer_settime(id, 0, &t, 0)) {
+    perror("sampler: timer"); return;
+  }
   atexit(done);
 }

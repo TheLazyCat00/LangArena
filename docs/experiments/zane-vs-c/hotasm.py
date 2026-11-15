@@ -26,6 +26,8 @@ p.add_argument('--funcs', type=int, default=2)
 p.add_argument('--min', type=float, default=0.002)
 p.add_argument('--out', default=os.environ.get('S', '/tmp'))
 a = p.parse_args()
+a.out = str(Path(a.out).resolve())
+a.zane = str(Path(a.zane).resolve())
 
 t = next(x for x in json.load(open(ROOT / 'run.js')) if x['name'] == a.test)
 t = dict(t)

@@ -17,7 +17,9 @@
 #include <time.h>
 #include "yyjson.h"
 #ifdef READ
-yyjson_doc *zread(char *, size_t, yyjson_read_flag, const yyjson_alc *, yyjson_read_err *) __asm__(READ);
+#define STR_(x) #x
+#define STR(x) STR_(x)
+yyjson_doc *zread(char *, size_t, yyjson_read_flag, const yyjson_alc *, yyjson_read_err *) __asm__(STR(READ));
 #define RD(t,n) zread(t,n,0,NULL,NULL)
 #else
 #define RD(t,n) yyjson_read_opts(t,n,0,NULL,NULL)

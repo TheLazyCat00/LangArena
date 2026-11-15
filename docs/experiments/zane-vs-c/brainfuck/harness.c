@@ -102,7 +102,9 @@ __attribute__((noinline)) static uint32_t run(const op_t *program, int64_t n, co
 }
 
 int main(int argc, char **argv) {
+  if (argc < 2) { fprintf(stderr, "usage: %s PROGRAM.b\n", argv[0]); return 2; }
   FILE *f = fopen(argv[1], "rb");
+  if (!f) { perror(argv[1]); return 1; }
   static char text[1 << 16];
   size_t len = fread(text, 1, sizeof text - 1, f);
   op_t *program = malloc(len * sizeof *program);

@@ -3,15 +3,20 @@
 
 usage: ab.py A_BIN B_BIN [--rounds N] [--filter SUBSTR]
 """
-import argparse, math, re, subprocess
+import argparse, math, re, subprocess, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-LINE = re.compile(r'^(\S+): (OK|ERR\S*) in ([0-9.]+)s', re.M)
+LINE = re.compile(r'^(\S+): (OK|ERR\[[^\]]*\]) in ([0-9.]+)s', re.M)
 
 def run(binary, flt):
-    out = subprocess.run([binary, str(ROOT / 'run.js')] + ([flt] if flt else []),
-                         text=True, capture_output=True, cwd=ROOT).stdout
+    r = subprocess.run([binary, str(ROOT / 'run.js')] + ([flt] if flt else []),
+                       text=True, capture_output=True, cwd=ROOT)
+    # A failed checksum exits nonzero too; only a run with no Summary line
+    # (a crash or abort) is incomplete.
+    if 'Summary:' not in r.stdout:
+        sys.exit(f'{binary} exited with {r.returncode}:\n{r.stderr}')
+    out = r.stdout
     return {n: (float(t) if s == 'OK' else None) for n, s, t in LINE.findall(out)}
 
 p = argparse.ArgumentParser()

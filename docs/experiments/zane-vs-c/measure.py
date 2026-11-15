@@ -8,11 +8,16 @@ import argparse, json, math, re, subprocess, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-LINE = re.compile(r'^(\S+): (OK|ERR\S*) in ([0-9.]+)s', re.M)
+LINE = re.compile(r'^(\S+): (OK|ERR\[[^\]]*\]) in ([0-9.]+)s', re.M)
 
 def run(binary, flt):
     args = [str(binary), str(ROOT / 'run.js')] + ([flt] if flt else [])
-    out = subprocess.run(args, text=True, capture_output=True, cwd=ROOT).stdout
+    r = subprocess.run(args, text=True, capture_output=True, cwd=ROOT)
+    # A failed checksum exits nonzero too; only a run with no Summary line
+    # (a crash or abort) is incomplete.
+    if 'Summary:' not in r.stdout:
+        sys.exit(f'{binary} exited with {r.returncode}:\n{r.stderr}')
+    out = r.stdout
     res = {}
     for name, status, t in LINE.findall(out):
         res[name] = float(t) if status == 'OK' else None
@@ -28,7 +33,8 @@ def main():
     a = p.parse_args()
     times = {'c': {}, 'zane': {}}
     for r in range(a.rounds):
-        for lang, b in (('c', a.c), ('zane', a.zane)):
+        order = (('c', a.c), ('zane', a.zane))
+        for lang, b in order if r % 2 == 0 else order[::-1]:
             for k, v in run(b, a.filter).items():
                 times[lang].setdefault(k, []).append(v)
         print(f'round {r+1}/{a.rounds} done', file=sys.stderr, flush=True)

@@ -99,6 +99,7 @@ List<Float> points(text String) {
     out!push(v);
     out!push(z);
     column=Int(0);
+    start=n+1;
   }
   if(column~=0 or quoted~=0 or start<=n) {
     return List(Float);

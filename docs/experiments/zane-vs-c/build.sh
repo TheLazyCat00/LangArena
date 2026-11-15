@@ -16,6 +16,7 @@ cp "$COMPILER/_build/default/bin/zanec/zanec.exe" "$T/dev/libexec/zanec"
 # its bitcode by the pixi environment's clang 21, once per runtime.
 stamp=$(cat "$COMPILER"/runtime/*.[ch] | md5sum | cut -c1-32)
 if [ ! -e "$T/dev/share/runtime/.stamp-$stamp" ]; then
+  rm -f "$T"/dev/share/runtime/.stamp-*
   for o in "" --optimize; do
     env -u ZIG -u ZANE_RUNTIME_OBJECTS ZANE_CC="$T/dev/bin/zig-cc" \
       ZANE_BITCODE_CC="$COMPILER/dev/release/bitcode-cc" \
@@ -25,5 +26,10 @@ if [ ! -e "$T/dev/share/runtime/.stamp-$stamp" ]; then
   touch "$T/dev/share/runtime/.stamp-$stamp"
 fi
 cd "$(dirname "$(readlink -f "$0")")/../../../zane"
-ZANE_COMPILER="$T/dev/bin/zanec" "${ZANE:-zane}" build 2>&1 | grep -v 'LLD could not\|unable to find library' || true
+# Drop two harmless linker warnings without losing zane's exit status.
+log=$(mktemp)
+ZANE_COMPILER="$T/dev/bin/zanec" "${ZANE:-zane}" build >"$log" 2>&1 && ok=0 || ok=$?
+grep -v 'LLD could not\|unable to find library' "$log" || true
+rm -f "$log"
+[ "$ok" -eq 0 ] || exit "$ok"
 if [ -n "${1:-}" ]; then cp out/host/zane "$1"; fi

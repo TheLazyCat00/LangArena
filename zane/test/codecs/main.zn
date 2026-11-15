@@ -5,6 +5,7 @@ import bwt;
 import huffman;
 import arithmetic;
 import lzw;
+import csvbench;
 
 Unit require(this Host, condition Bool, message String) mut {
   if(~condition) {this!fail(message);}
@@ -50,5 +51,10 @@ Unit main() {
   }
   largeEncoded lzw$Encoded=lzw$encode(largeInput:string());
   host!require(String(lzw$decode(largeEncoded))==largeInput:string(),String("LZW dictionary saturation"));
+  lastRow List<Float> = csvbench$points(String("label,1,,2,meta,3"));
+  host!require(lastRow:size()==3, String("CSV row without a final line break"));
+  host!require(lastRow[1]==Float(1.0) and lastRow[2]==Float(3.0) and lastRow[3]==Float(2.0), String("CSV row without a final line break: x, y, z"));
+  host!require(csvbench$points(String("label,1,,2,meta,3\n")):size()==3, String("CSV row with a final line break"));
+  host!require(csvbench$points(String("label,1,,2,meta")):size()==0, String("CSV short last row"));
   return Unit();
 }

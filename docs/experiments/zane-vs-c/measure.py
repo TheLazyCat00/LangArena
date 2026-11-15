@@ -33,9 +33,12 @@ def main():
     p.add_argument('--c', default=str(ROOT / 'c/target/prod/benchmark'))
     a = p.parse_args()
     times = {'c': {}, 'zane': {}}
+    orders = []
     for r in range(a.rounds):
         order = (('c', a.c), ('zane', a.zane))
-        for lang, b in order if r % 2 == 0 else order[::-1]:
+        ran = order if r % 2 == 0 else order[::-1]
+        orders.append([lang for lang, _ in ran])
+        for lang, b in ran:
             for k, v in run(b, a.filter).items():
                 times[lang].setdefault(k, []).append(v)
         print(f'round {r+1}/{a.rounds} done', file=sys.stderr, flush=True)
@@ -52,6 +55,7 @@ def main():
     if logs:
         print(f'\ngeomean Zane/C over {len(logs)} tests: {math.exp(sum(logs)/len(logs)):.3f}')
     if a.out:
-        Path(a.out).write_text(json.dumps(times, indent=1))
+        # Per test, samples in round order; 'order' lists which ran first.
+        Path(a.out).write_text(json.dumps(dict(times, order=orders), indent=1))
 
 main()

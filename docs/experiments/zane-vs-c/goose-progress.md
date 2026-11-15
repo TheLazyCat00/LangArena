@@ -564,3 +564,13 @@ Zane / Goose-gcc 0.910 (faster on 29); `old` 1.055 / 0.903. No net gain:
   becomes a private constant global, as clang makes Goose's `const`
   arrays. The scene was rebuilt on the stack for every pixel, since the
   hit sphere is read by an index LLVM does not know: → 0.83.
+
+### LZWDecode: 0.21 → 0.166 s (Goose/clang 0.16)
+
+Same algorithm as Goose's (entries as ranges of one byte list, appended
+to it and to the output). The extra was `zane_list_grow`: 1.26 GB copied
+in 92 k reallocations as `strings` and `out` doubled up to the 128 KiB
+growable-span threshold. `ZANE_LIST_SPANS=16384` (from 131072): LZWDecode
+0.21 → 0.166; 32 KiB 0.174, 64 KiB 0.186. LZWEncode, HuffEncode,
+Json::Generate and Words move ±10% between reruns at every threshold,
+with no order. Builds from here use 16384.

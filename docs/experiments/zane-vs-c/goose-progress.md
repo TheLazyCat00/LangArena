@@ -300,3 +300,26 @@ New switch this run: `ZANE_ARM_CHECKS=1` (below); `SW` plus it is the build.
   after, the stores move to the arms' ends, so SimplifyCFG sinks them into
   one store and the arms become selects. Also fires in huffman decode,
   distance and yyjson. 1.50 s.
+
+### SHA256: 0.90 → 0.45 s (Goose/clang 0.40)
+
+- Goose's compiler strip-mines `for byte, i in data` indexed `i % 8` into
+  runs of 8 whose index is the run's own counter ("loop shape:
+  strip-mined by 8" in its C), so clang keeps the eight hashes in vector
+  registers (SLP). Ours: LLVM unrolls by 4 from wherever IRCE's split left
+  the loop, the index is never constant, the hashes stay in memory.
+- Compiler `Strip` (CGT, `lib/optimize/strip.ml`, `ZANE_STRIP=1`): a
+  counted loop whose body ends `x = x + 1`, indexes an array of 2–16
+  (power of two) elements, uses `bitAnd`, and has no call, loop or scope,
+  becomes `repeat c/N { x = start + b*N; N copies of the body }` and a
+  remainder loop; each copy's locals and labels are renamed. With `start`
+  known, each copy's `bitAnd(x-1+k, N-1)` folds and SROA puts the eight
+  hashes in registers: 0.90 s, unchanged, as the copies' bounds checks of
+  `data[x+k]` cut the block in eight and nothing vectorizes.
+- The loop passes turn those checks into exit tests `b == (n+k) >> 3`
+  against a loop that leaves at `b+1 == n >> 3`, which can never hold;
+  LLVM does not see it. Compiler `Range_checks` (`ZANE_RANGE_CHECKS=1`,
+  post-pipeline): such a test of a counter that starts at 0, steps by one
+  and leaves at `(n+j) >> s`, against `(n+k) >> s` with k >= j, made false;
+  also, a straight run of checks of `x+k` against one bound made one check
+  of the lowest and highest offsets. Then `slp-vectorizer` again: 0.45 s.

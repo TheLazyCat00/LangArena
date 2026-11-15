@@ -1,14 +1,14 @@
 #!/bin/sh
 # Build the LangArena Zane port with the compiler built from the experiment
 # branch (zane-lang/compiler perf/zane-vs-c in $COMPILER, default
-# /home/user/compiler), run inside a copy of the v0.36 release toolchain so
+# /home/user/compiler), run inside a copy of the v0.37 release toolchain so
 # the runtime and linker are the release's (a bare dev zanec compiles the
 # runtime with the system clang, which changes the code). Copies the result
 # to $1 if given. Environment switches (ZANE_*) pass through to zanec.
 set -e
 COMPILER=${COMPILER:-/home/user/compiler}
 T=$HOME/.zane/toolchains
-[ -d "$T/dev" ] || cp -r "$T/v0.36" "$T/dev"
+[ -d "$T/dev" ] || cp -r "$T/v0.37" "$T/dev"
 cp "$COMPILER/_build/default/bin/zanec/zanec.exe" "$T/dev/libexec/zanec"
 # A changed runtime is not in the release's bundle, and zanec would compile
 # it with `zig cc`, whose bitcode its LLVM cannot read, so no runtime body

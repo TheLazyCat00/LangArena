@@ -102,33 +102,29 @@ Unit merge(this State, left Int, right Int) mut {
   mid Int=(left+right)/2;
   this!merge(left, mid);
   this!merge(mid+1, right);
-  p Int=left;
-  p!to(right) {
-    this.temp[p]=this.work[p];
-  }
+  // As Goose's port: the range copied to temp in one copy, merged while
+  // both halves have elements, then the left half's rest copied back; the
+  // right half's rest is already in place.
+  this.temp!copyRange(left, this.work, left, right-left+1);
   i Int=left;
   j Int=mid+1;
   k Int=left;
-  k!to(right) {
-    have Bool=if(i<=mid) {
-      fromLeft Bool=Bool(true);
-      if(j<=right) {
-        fromLeft=this.temp[i]<=this.temp[j];
-      }
-      chosen Bool=if(fromLeft) {
-        this.work[k]=this.temp[i];
-        i=i+1;
-      }
-      chosen:else() {
-        this.work[k]=this.temp[j];
-        j=j+1;
-      }
+  m Int=left;
+  m!to(right) {
+    guard(i>mid or j>right);
+    a I32=this.temp[i];
+    b I32=this.temp[j];
+    fromLeft Bool=if(a<=b) {
+      this.work[k]=a;
+      i=i+1;
     }
-    have:else() {
-      this.work[k]=this.temp[j];
+    fromLeft:else() {
+      this.work[k]=b;
       j=j+1;
     }
+    k=k+1;
   }
+  this.work!copyRange(k, this.temp, i, mid-i+1);
   return Unit();
 }
 

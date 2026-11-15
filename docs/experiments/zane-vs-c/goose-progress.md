@@ -653,3 +653,15 @@ against Goose's clang and gcc builds.
   cycles against Goose's single pointer load. Taking the `dec` off the
   chain is the biased-base idea, which is not being pursued; the 16-byte
   stride was tried before. Left.
+
+### Graph::BFS (1.2–1.3×): looked at, left
+
+- Same algorithm and the same inner loop as Goose's, but for our `dec`
+  of the 1-based neighbor index and a capacity check on each queue push
+  (Goose's queue grows in a reserved span and pushes through a cursor).
+  Half the samples are on the load of each adjacency list's first item.
+- Goose puts every adjacency slice in one pool (`edges.realloc_slice`);
+  ours are separate lists grown by doubling (RSS 87 MB vs 66 MB). A
+  diagnostic copy of every list into fresh, packed lists in vertex order
+  after `prepare` gave only 1.614 → 1.572 (Goose 1.341), so placement is
+  not the cause. Reverted.

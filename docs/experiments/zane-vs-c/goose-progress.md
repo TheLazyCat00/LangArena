@@ -55,3 +55,20 @@ Maze::Generator 1.8, Words 1.7, Interpreter 1.6, Sort::Merge 1.5.
 - Compiler + core: `List.sort()` for I32/I64/U8, runtime `zane_list_sort`,
   the same algorithm written out per width (fixtures `listSort`,
   `reject/sortFloats`). Port: copy the data, `sort()`, as Goose's port.
+
+### CSV::Parse: 1.89 → 0.72 s (Goose/clang 0.47; 4.0× → 1.5×)
+
+- Port parsed through the arena FFI's C reader with glibc `strtod` (52%
+  of the time). Goose reads with its std `csv::each_record` and its own
+  `parse_flt` over slices. Port now has that structure: one Zane pass over
+  the bytes, each float field parsed where it lies.
+- Compiler 1a23e7c + core 912d211: `zane_parse_f64` checks and folds
+  the digits in one pass, with Clinger's fast path (≤19 digits, ≤2^53,
+  ≤22 after the point: one exact division) before `strtod`;
+  `String.parseFloat(start, count)` reads a range with no copy (fixture
+  `parseRange`).
+- Left: the scan is ~2 cycles/byte against Goose's ~1. Goose's reader
+  runs a tight inner loop per field kind (`while` with 3 compares); Zane
+  has only counted loops (`to`/`repeat`), no `while`/`break`, so the
+  port toggles a quote flag per byte. A conditional loop is a language
+  decision → question for the user.

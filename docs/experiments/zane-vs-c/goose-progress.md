@@ -212,11 +212,12 @@ LogParser 2.5, SHA256 2.3, HuffDecode 2.1, BWTEncode 1.9,
 Binarytrees::Arena 1.8, Template::Parse 1.8, CSV 1.7, Ast 1.6,
 GameOfLife 1.55, Sort::Merge 1.5. Single-test runs are noisy at ±10%.
 
-## Open questions for the user
+## Decisions from the user (2026-11-15)
 
-- A conditional loop (`while`/`break`) in core and the compiler: Goose's
-  CSV reader and the calculator's scanners are tight `while` loops; ours
-  stand in with `i!to(bound)` and an early return, which also wakes IRCE
-  on loops that run once (Ast).
-- A regex library for Zane (LogParser), and a comparator / key-pair
-  stable sort in core (BWTEncode): both library projects.
+- No unbounded `while`: bounded loops are what lets Zane evaluate
+  aggressively at compile time, and `guard` already breaks out of a
+  loop. The port's `i!to(bound)` loops with an early exit are the
+  intended shape; a loop's exit belongs in `guard`, not a new construct.
+- No regex library or comparator sort in core yet (LogParser, BWTEncode
+  stay as they are).
+- The compiler work goes to a PR.

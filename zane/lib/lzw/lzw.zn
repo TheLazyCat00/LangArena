@@ -19,7 +19,7 @@ Encoded encode(input String) {
     return Encoded(String(""));
   }
   strings List<U8> = List(U8);
-  dict BytesMap=BytesMap(Int(4096));
+  dict BytesMap=BytesMap(n*2+1024);
   i Int=Int(0);
   i!to(Int(255)) {
     strings!push(U8.wrap(i));

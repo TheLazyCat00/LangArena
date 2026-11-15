@@ -138,3 +138,12 @@ Maze::Generator 1.8, Words 1.7, Interpreter 1.6, Sort::Merge 1.5.
   Ours: `b!to(min(8, remaining))` is not unrolled, the leaf test reads two
   fields. Whole bytes in a constant `b!to(8)` loop (the last byte after)
   was slower too, 1.30. Left open.
+
+### BWTEncode (2.0×): open
+
+- Same rounds as Goose (prefix doubling to n). Goose sorts each round
+  with its std `stable_sort`, an adaptive natural merge sort with a
+  comparator over rank pairs: the suffix array is already in rank order
+  from the round before, so its runs are long. Ours: two full counting
+  sorts per round, as C. 32-bit counts: no change. Matching Goose needs a
+  comparator (or key-pair) stable sort in core; left.

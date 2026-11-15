@@ -221,3 +221,7 @@ GameOfLife 1.55, Sort::Merge 1.5. Single-test runs are noisy at ±10%.
 - No regex library or comparator sort in core yet (LogParser, BWTEncode
   stay as they are).
 - The compiler work goes to a PR.
+
+## Compiler PR
+
+Opened zane-lang/compiler#378 (branch `perf/list-ranges-float-reads`) on 2026-11-15 with the compiler side of this work.

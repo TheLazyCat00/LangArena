@@ -1,0 +1,1029 @@
+package arena;
+import core$;
+import math$;
+// Regular expressions on the model of Goose's (its stdlib regex.goose),
+// written in Zane: leftmost-first matching, as PCRE's and the Rust regex
+// crate's, unanchored search and non-overlapping iteration, on bytes.
+//
+// A pattern is parsed into a syntax tree and compiled to a Thompson NFA,
+// built back to front from its match instruction, so an instruction's
+// successors are in place when it is added. From the NFA come two complete
+// DFAs, by subset construction: a forward one over the pattern with an
+// unanchored, lowest-priority `.*?` ahead of it, which finds where the
+// leftmost-first match ends, and one over the reversed pattern, which walks
+// back from that end to where the match starts. A search is then a table
+// lookup per byte, and wherever the forward DFA is back in its start state
+// a skip loop passes over the text where no match can start: one that
+// tests the two bytes, at fixed offsets of every match's leading bytes,
+// that are rarest by a rough frequency.
+//
+// Syntax: literals, `.`, classes `[...]` with ranges, negation and the
+// POSIX names space, alnum, alpha and digit, the escapes `\d \w \s` and
+// their complements, groups `(...)` and `(?:...)` (which capture nothing),
+// `|`, and `* + ? {n} {n,} {n,m}`, each lazy with a `?` after it. Case is
+// folded for ASCII letters where asked. No anchors.
+
+// A DFA over byte classes. States are numbered with the dead state first,
+// then the match states, then, where the skip loop takes over there, the
+// start state, so that one comparison against `special` finds every state
+// the search loop must look at. A state number is premultiplied by the
+// number of classes: it is the offset of its row in `trans`.
+type RxTable = struct {
+  start Int;
+  matchEnd Int;
+  special Int;
+  trans List<I32>;
+}
+
+RxTable(start Int, matchEnd Int, special Int, trans List<I32>) => init {
+  start;
+  matchEnd;
+  special;
+  trans;
+}
+
+type Rx = struct {
+  nullable Bool;
+  // Each byte's class, at the byte plus one.
+  classes List<I32>;
+  forward RxTable;
+  reverse RxTable;
+  // The prefix test: every match is at least `least` bytes long, and its
+  // bytes at offsets `at1` and `at2` are in `set1` and `set2` (each at the
+  // byte plus one). Taken where `skips`.
+  skips Bool;
+  least Int;
+  at1 Int;
+  at2 Int;
+  set1 List<Bool>;
+  set2 List<Bool>;
+}
+
+Rx(nullable Bool, classes List<I32>, forward RxTable, reverse RxTable, skips Bool, least Int, at1 Int, at2 Int, set1 List<Bool>, set2 List<Bool>) => init {
+  nullable;
+  classes;
+  forward;
+  reverse;
+  skips;
+  least;
+  at1;
+  at2;
+  set1;
+  set2;
+}
+
+Int rxNone() => Int(0)-Int(1);
+
+// The pattern being parsed and compiled, its syntax tree, its byte sets
+// and its program, and the DFA being built.
+type RxBuilder = #struct {
+  pattern String;
+  at Int;
+  insensitive Bool;
+  // Nodes: kind 1 empty, 2 a byte of set `one`, 3 `one` then `two`, 4
+  // `one` or else `two`, 5 `one` repeated `low` to `high` times (high -1:
+  // no end), greedily or not.
+  kinds List<Int>;
+  ones List<Int>;
+  twos List<Int>;
+  lows List<Int>;
+  highs List<Int>;
+  greedy List<Bool>;
+  // Byte sets, 256 to a set: byte b of set k at (k-1)*256+b+1.
+  sets List<Bool>;
+  // Instructions: op 0 match, 1 a byte of set `x` then `y`, 2 split to `x`
+  // first and `y` second.
+  ops List<Int>;
+  xs List<Int>;
+  ys List<Int>;
+  // The DFA being built: each state's byte instructions, back to back,
+  // where each starts, whether it has matched, its key and the index of
+  // the keys, and the transitions found so far.
+  classes List<I32>;
+  reps List<Int>;
+  lists List<Int>;
+  bounds List<Int>;
+  matching List<Bool>;
+  keys List<U8>;
+  index BytesMap;
+  trans List<Int>;
+  list List<Int>;
+  matched Bool;
+  seen List<Int>;
+  round Int;
+}
+
+RxBuilder(pattern String, insensitive Bool) => init {
+  pattern;
+  at=Int(1);
+  insensitive;
+  kinds=List(Int);
+  ones=List(Int);
+  twos=List(Int);
+  lows=List(Int);
+  highs=List(Int);
+  greedy=List(Bool);
+  sets=List(Bool);
+  ops=List(Int);
+  xs=List(Int);
+  ys=List(Int);
+  classes=List(I32);
+  reps=List(Int);
+  lists=List(Int);
+  bounds=List(Int);
+  matching=List(Bool);
+  keys=List(U8);
+  index=BytesMap(Int(16));
+  trans=List(Int);
+  list=List(Int);
+  matched=Bool(false);
+  seen=List(Int);
+  round=Int(0);
+}
+
+// --- parsing ---------------------------------------------------------------
+
+// The next byte of the pattern, or -1 past its end.
+Int peek(this RxBuilder) {
+  if(this.at>this.pattern:byteCount()) {
+    return rxNone();
+  }
+  return Int(this.pattern:byteAt(this.at));
+}
+
+Int peekAt(this RxBuilder, ahead Int) {
+  if(this.at+ahead>this.pattern:byteCount()) {
+    return rxNone();
+  }
+  return Int(this.pattern:byteAt(this.at+ahead));
+}
+
+Unit skip(this RxBuilder) mut {
+  this.at=this.at+1;
+  return Unit();
+}
+
+Int node(this RxBuilder, kind Int, one Int, two Int, low Int, high Int, greedy Bool) mut {
+  k Int=kind;
+  this.kinds!push(k);
+  a Int=one;
+  this.ones!push(a);
+  b Int=two;
+  this.twos!push(b);
+  l Int=low;
+  this.lows!push(l);
+  h Int=high;
+  this.highs!push(h);
+  g Bool=greedy;
+  this.greedy!push(g);
+  return this.kinds:size();
+}
+
+Int newSet(this RxBuilder) mut {
+  i Int=Int(1);
+  i!to(Int(256)) {
+    this.sets!push(Bool(false));
+  }
+  return this.sets:size()/256;
+}
+
+Unit addRange(this RxBuilder, set Int, low Int, high Int) mut {
+  b Int=low;
+  b!to(high) {
+    this.sets[(set-1)*256+b+1]=Bool(true);
+  }
+  return Unit();
+}
+
+Bool has(this RxBuilder, set Int, b Int) => this.sets[(set-1)*256+b+1];
+
+// The other case of every ASCII letter in the set added.
+Unit fold(this RxBuilder, set Int) mut {
+  b Int=Int(65);
+  b!to(Int(90)) {
+    if(this:has(set, b) or this:has(set, b+32)) {
+      this.sets[(set-1)*256+b+1]=Bool(true);
+      this.sets[(set-1)*256+b+33]=Bool(true);
+    }
+  }
+  return Unit();
+}
+
+Unit invert(this RxBuilder, set Int) mut {
+  b Int=Int(0);
+  b!to(Int(255)) {
+    this.sets[(set-1)*256+b+1]=~this:has(set, b);
+  }
+  return Unit();
+}
+
+// The bytes of \d, \w or \s (by the escape's letter in lower case), or of
+// a POSIX class's name's first letters (d, a for alnum, l for alpha, s),
+// added.
+Unit addNamed(this RxBuilder, set Int, letter Int) mut {
+  if(letter==100) {
+    this!addRange(set, Int(48), Int(57));
+  }
+  if(letter==119) {
+    this!addRange(set, Int(48), Int(57));
+    this!addRange(set, Int(65), Int(90));
+    this!addRange(set, Int(97), Int(122));
+    this!addRange(set, Int(95), Int(95));
+  }
+  if(letter==115) {
+    this!addRange(set, Int(9), Int(13));
+    this!addRange(set, Int(32), Int(32));
+  }
+  if(letter==97) {
+    this!addRange(set, Int(48), Int(57));
+    this!addRange(set, Int(65), Int(90));
+    this!addRange(set, Int(97), Int(122));
+  }
+  if(letter==108) {
+    this!addRange(set, Int(65), Int(90));
+    this!addRange(set, Int(97), Int(122));
+  }
+  return Unit();
+}
+
+Bool isNamed(letter Int) => letter==100 or letter==119 or letter==115;
+
+// A set of one byte, of both its cases where folded.
+Int literal(this RxBuilder, b Int) mut {
+  set Int=this!newSet();
+  this!addRange(set, b, b);
+  folds Bool=this.insensitive;
+    if(folds) {
+    this!fold(set);
+  }
+  return set;
+}
+
+// Past a POSIX class name's `:]`.
+Unit skipName(this RxBuilder) mut {
+  k Int=Int(1);
+  k!to(this.pattern:byteCount()) {
+    c Int=this:peek();
+    this!skip();
+    if(c==93 or c<0) {
+      return Unit();
+    }
+  }
+  return Unit();
+}
+
+// A class, from past its `[` to past its `]`.
+Int parseClass(this RxBuilder) mut {
+  set Int=this!newSet();
+  negated Bool=this:peek()==94;
+  if(negated) {
+    this!skip();
+  }
+  if(this:peek()==93) {
+    this!skip();
+    this!addRange(set, Int(93), Int(93));
+  }
+  k Int=Int(1);
+  k!to(this.pattern:byteCount()) {
+    c Int=this:peek();
+    if(c<0) {
+      return set;
+    }
+    if(c==93) {
+      this!skip();
+      folds Bool=this.insensitive;
+    if(folds) {
+        this!fold(set);
+      }
+      if(negated) {
+        this!invert(set);
+      }
+      return set;
+    }
+    named Bool=c==91 and this:peekAt(Int(1))==58;
+    escaped Bool=c==92;
+    if(named) {
+      letter Int=this:peekAt(Int(2));
+      if(letter==97 and this:peekAt(Int(4))==112) {
+        letter=Int(108);
+      }
+      this!addNamed(set, letter);
+      this!skipName();
+    }
+    if(escaped) {
+      this!skip();
+      e Int=this:peek();
+      this!skip();
+      if(isNamed(e)) {
+        this!addNamed(set, e);
+      }
+      if(isNamed(e+32)) {
+        other Int=this!newSet();
+        this!addNamed(other, e+32);
+        this!invert(other);
+        b Int=Int(0);
+        b!to(Int(255)) {
+          if(this:has(other, b)) {
+            this.sets[(set-1)*256+b+1]=Bool(true);
+          }
+        }
+      }
+      if(~isNamed(e) and ~isNamed(e+32)) {
+        this!addRange(set, e, e);
+      }
+    }
+    if(~named and ~escaped) {
+      this!skip();
+      ranged Bool=if(this:peek()==45 and this:peekAt(Int(1))~=93 and this:peekAt(Int(1))>=0) {
+        this!skip();
+        high Int=this:peek();
+        this!skip();
+        this!addRange(set, c, high);
+      }
+      ranged:else() {
+        this!addRange(set, c, c);
+      }
+    }
+  }
+  return set;
+}
+
+Int parseAtom(this RxBuilder) mut {
+  c Int=this:peek();
+  if(c==40) {
+    this!skip();
+    if(this:peek()==63 and this:peekAt(Int(1))==58) {
+      this!skip();
+      this!skip();
+    }
+    inner Int=this!parseAlt();
+    this!skip();
+    return inner;
+  }
+  if(c==91) {
+    this!skip();
+    set Int=this!parseClass();
+    return this!node(Int(2), set, Int(0), Int(0), Int(0), Bool(true));
+  }
+  if(c==46) {
+    this!skip();
+    set Int=this!newSet();
+    this!addRange(set, Int(0), Int(255));
+    this.sets[(set-1)*256+11]=Bool(false);
+    return this!node(Int(2), set, Int(0), Int(0), Int(0), Bool(true));
+  }
+  if(c==92) {
+    this!skip();
+    e Int=this:peek();
+    this!skip();
+    set Int=this!newSet();
+    if(isNamed(e)) {
+      this!addNamed(set, e);
+      return this!node(Int(2), set, Int(0), Int(0), Int(0), Bool(true));
+    }
+    if(isNamed(e+32)) {
+      this!addNamed(set, e+32);
+      this!invert(set);
+      return this!node(Int(2), set, Int(0), Int(0), Int(0), Bool(true));
+    }
+    this!addRange(set, e, e);
+    folds Bool=this.insensitive;
+    if(folds) {
+      this!fold(set);
+    }
+    return this!node(Int(2), set, Int(0), Int(0), Int(0), Bool(true));
+  }
+  this!skip();
+  set Int=this!literal(c);
+  return this!node(Int(2), set, Int(0), Int(0), Int(0), Bool(true));
+}
+
+// A decimal number at the pattern's position, or -1 if none.
+Int number(this RxBuilder) mut {
+  n Int=rxNone();
+  k Int=Int(1);
+  k!to(Int(10)) {
+    c Int=this:peek();
+    if(c<48 or c>57) {
+      return n;
+    }
+    if(n<0) {
+      n=Int(0);
+    }
+    n=n*10+c-48;
+    this!skip();
+  }
+  return n;
+}
+
+Int parseRepeat(this RxBuilder) mut {
+  atom Int=this!parseAtom();
+  k Int=Int(1);
+  k!to(Int(8)) {
+    c Int=this:peek();
+    low Int=rxNone();
+    high Int=rxNone();
+    if(c==42) {
+      low=Int(0);
+    }
+    if(c==43) {
+      low=Int(1);
+    }
+    if(c==63) {
+      low=Int(0);
+      high=Int(1);
+    }
+    if(low>=0) {
+      this!skip();
+    }
+    if(c==123) {
+      this!skip();
+      low=this!number();
+      high=low;
+      if(this:peek()==44) {
+        this!skip();
+        high=this!number();
+      }
+      this!skip();
+    }
+    if(low<0) {
+      return atom;
+    }
+    greedy Bool=Bool(true);
+    if(this:peek()==63) {
+      this!skip();
+      greedy=Bool(false);
+    }
+    atom=this!node(Int(5), atom, Int(0), low, high, greedy);
+  }
+  return atom;
+}
+
+Int parseCat(this RxBuilder) mut {
+  out Int=this!node(Int(1), Int(0), Int(0), Int(0), Int(0), Bool(true));
+  empty Bool=Bool(true);
+  k Int=Int(1);
+  k!to(this.pattern:byteCount()+1) {
+    c Int=this:peek();
+    if(c<0 or c==124 or c==41) {
+      return out;
+    }
+    item Int=this!parseRepeat();
+    first Bool=empty;
+    joined Bool=if(first) {
+      out=item;
+      empty=Bool(false);
+    }
+    joined:else() {
+      out=this!node(Int(3), out, item, Int(0), Int(0), Bool(true));
+    }
+  }
+  return out;
+}
+
+Int parseAlt(this RxBuilder) mut {
+  out Int=this!parseCat();
+  k Int=Int(1);
+  k!to(this.pattern:byteCount()+1) {
+    if(this:peek()~=124) {
+      return out;
+    }
+    this!skip();
+    other Int=this!parseCat();
+    out=this!node(Int(4), out, other, Int(0), Int(0), Bool(true));
+  }
+  return out;
+}
+
+// --- the program -------------------------------------------------------------
+
+Int inst(this RxBuilder, op Int, x Int, y Int) mut {
+  o Int=op;
+  this.ops!push(o);
+  a Int=x;
+  this.xs!push(a);
+  b Int=y;
+  this.ys!push(b);
+  return this.ops:size();
+}
+
+// The instructions of node `n`, going on to `next`; with `backward`, of its
+// pattern reversed.
+Int emit(this RxBuilder, n Int, next Int, backward Bool) mut {
+  kind Int=this.kinds[n];
+  if(kind==2) {
+    set Int=this.ones[n];
+    return this!inst(Int(1), set, next);
+  }
+  one Int=this.ones[n];
+  two Int=this.twos[n];
+  if(kind==3) {
+    if(backward) {
+      after Int=this!emit(one, next, backward);
+      return this!emit(two, after, backward);
+    }
+    after Int=this!emit(two, next, backward);
+    return this!emit(one, after, backward);
+  }
+  if(kind==4) {
+    first Int=this!emit(one, next, backward);
+    second Int=this!emit(two, next, backward);
+    return this!inst(Int(2), first, second);
+  }
+  if(kind==5) {
+    child Int=this.ones[n];
+    low Int=this.lows[n];
+    high Int=this.highs[n];
+    greedy Bool=this.greedy[n];
+    entry Int=next;
+    if(high<0) {
+      loop Int=this!inst(Int(2), Int(0), Int(0));
+      body Int=this!emit(child, loop, backward);
+      order Bool=if(greedy) {
+        this.xs[loop]=body;
+        this.ys[loop]=next;
+      }
+      order:else() {
+        this.xs[loop]=next;
+        this.ys[loop]=body;
+      }
+      entry=loop;
+    }
+    if(high>low) {
+      k Int=Int(1);
+      k!to(high-low) {
+        body Int=this!emit(child, entry, backward);
+        split Bool=if(greedy) {
+          entry=this!inst(Int(2), body, next);
+        }
+        split:else() {
+          entry=this!inst(Int(2), next, body);
+        }
+      }
+    }
+    k Int=Int(1);
+    k!to(low) {
+      entry=this!emit(child, entry, backward);
+    }
+    return entry;
+  }
+  return next;
+}
+
+// --- the DFAs -----------------------------------------------------------------
+
+Unit begin(this RxBuilder) mut {
+  this.list=List(Int);
+  this.matched=Bool(false);
+  this.round=this.round+1;
+  return Unit();
+}
+
+// Adds the byte instructions `pc0` leads to without consuming a byte, in
+// priority order; true where `leftmost` and a match cut the list short.
+Bool follow(this RxBuilder, pc0 Int, leftmost Bool) mut {
+  stack List<Int> = List(Int);
+  p Int=pc0;
+  stack!push(p);
+  k Int=Int(1);
+  k!to(this.ops:size()*3+3) {
+    if(stack:size()==0) {
+      return Bool(false);
+    }
+    pc Int=stack!remove(stack:size());
+    guard(this.seen[pc]~=this.round);
+    this.seen[pc]=this.round;
+    op Int=this.ops[pc];
+    if(op==1) {
+      this.list!push(pc);
+    }
+    if(op==2) {
+      second Int=this.ys[pc];
+      stack!push(second);
+      first Int=this.xs[pc];
+      stack!push(first);
+    }
+    if(op==0) {
+      this.matched=Bool(true);
+      if(leftmost) {
+        return Bool(true);
+      }
+    }
+  }
+  return Bool(false);
+}
+
+// The state for the list and whether it matched, made if it is new.
+Int intern(this RxBuilder) mut {
+  probe List<U8> = List(U8);
+  i Int=Int(1);
+  i!to(this.list:size()) {
+    pc Int=this.list[i];
+    probe!push(U8.wrap(shiftRightLogical(pc, Int(8))));
+    probe!push(U8.wrap(bitAnd(pc, Int(255))));
+  }
+  flag Int=Int(0);
+  if(this.matched) {
+    flag=Int(1);
+  }
+  probe!push(U8.wrap(flag));
+  known Int=this.index:findIn(this.keys, probe, Int(1), probe:size());
+  if(known>=0) {
+    return known;
+  }
+  start Int=this.keys:size()+1;
+  this.keys!appendRange(probe, Int(1), probe:size());
+  id Int=this.matching:size()+1;
+  this.index!put(this.keys, start, probe:size(), id);
+  this.lists!appendRange(this.list, Int(1), this.list:size());
+  end Int=this.lists:size()+1;
+  this.bounds!push(end);
+  m Bool=this.matched;
+  this.matching!push(m);
+  return id;
+}
+
+// The state after state `s` reads a byte of class `c` (0-based), interned.
+Int advance(this RxBuilder, s Int, c Int, leftmost Bool) mut {
+  this!begin();
+  b Int=this.reps[c+1];
+  at Int=this.bounds[s];
+  k Int=Int(1);
+  k!to(this.bounds[s+1]-this.bounds[s]) {
+    pc Int=this.lists[at];
+    at=at+1;
+    if(this:has(this.xs[pc], b)) {
+      next Int=this.ys[pc];
+      if(this!follow(next, leftmost)) {
+        return this!intern();
+      }
+    }
+  }
+  return this!intern();
+}
+
+RxTable dfa(this RxBuilder, entry Int, leftmost Bool, skipStart Bool) mut {
+  stride Int=this.reps:size();
+  this.lists=List(Int);
+  this.bounds=List(Int);
+  this.bounds!push(Int(1));
+  this.matching=List(Bool);
+  this.keys=List(U8);
+  this.index=BytesMap(Int(65536));
+  this.trans=List(Int);
+  this!begin();
+  dead Int=this!intern();
+  this!begin();
+  cut Bool=this!follow(entry, leftmost);
+  start Int=this!intern();
+  s Int=Int(1);
+  n Int=Int(1);
+  n!to(Int(30000)) {
+    if(s>this.matching:size()) {
+      return this!renumber(start, stride, skipStart);
+    }
+    c Int=Int(0);
+    c!to(stride-1) {
+      t Int=this!advance(s, c, leftmost);
+      this.trans!push(t);
+    }
+    s=s+1;
+  }
+  return this!renumber(start, stride, skipStart);
+}
+
+// The states renumbered: the dead state, the match states, the start state
+// if it is special, then the rest; each premultiplied by the stride.
+RxTable renumber(this RxBuilder, start Int, stride Int, skipStart Bool) mut {
+  count Int=this.matching:size();
+  order List<Int> = List(Int);
+  order!push(Int(1));
+  s Int=Int(2);
+  s!to(count) {
+    if(this.matching[s]) {
+      copy Int=s;
+      order!push(copy);
+    }
+  }
+  matchEnd Int=order:size();
+  startSpecial Bool=skipStart and ~this.matching[start];
+  if(startSpecial) {
+    copy Int=start;
+    order!push(copy);
+  }
+  special Int=order:size();
+  t Int=Int(2);
+  t!to(count) {
+    if(~this.matching[t] and ~(startSpecial and t==start)) {
+      copy Int=t;
+      order!push(copy);
+    }
+  }
+  number List<Int> = filled(count, Int(0));
+  i Int=Int(1);
+  i!to(count) {
+    number[order[i]]=i-1;
+  }
+  table List<I32> = List(I32);
+  j Int=Int(1);
+  j!to(count) {
+    old Int=order[j];
+    c Int=Int(1);
+    c!to(stride) {
+      table!push(I32.wrap(number[this.trans[(old-1)*stride+c]]*stride));
+    }
+  }
+  return RxTable(number[start]*stride, matchEnd*stride, special*stride, table);
+}
+
+// --- analysis ------------------------------------------------------------------
+
+// A rough share of a byte in typical text, in twentieths of a percent, as
+// Goose's: the digits rank with the letters.
+Int rxFrequency(b Int) {
+  if(b==32) {
+    return Int(300);
+  }
+  if(b>=97 and b<=122) {
+    if(b==101 or b==116 or b==97 or b==111 or b==105 or b==110 or b==115 or b==114 or b==104 or b==108) {
+      return Int(100);
+    }
+    return Int(20);
+  }
+  if(b>=48 and b<=57) {
+    return Int(40);
+  }
+  if(b>=65 and b<=90) {
+    return Int(10);
+  }
+  if(b==10 or b==46 or b==44 or b==45 or b==47 or b==58 or b==59 or b==34 or b==39 or b==40 or b==41 or b==61 or b==95) {
+    return Int(20);
+  }
+  if(b>32 and b<127) {
+    return Int(4);
+  }
+  return Int(1);
+}
+
+Rx rx(pattern String, insensitive Bool) {
+  r RxBuilder=RxBuilder(pattern, insensitive);
+  root Int=r!parseAlt();
+  matchPc Int=r!inst(Int(0), Int(0), Int(0));
+  entry Int=r!emit(root, matchPc, Bool(false));
+  // The unanchored start: (?s:.)*? ahead of the pattern, lowest priority.
+  any Int=r!newSet();
+  r!addRange(any, Int(0), Int(255));
+  head Int=r!inst(Int(2), entry, Int(0));
+  loop Int=r!inst(Int(1), any, head);
+  r.ys[head]=loop;
+  backMatch Int=r!inst(Int(0), Int(0), Int(0));
+  backEntry Int=r!emit(root, backMatch, Bool(true));
+  r.seen=filled(r.ops:size(), Int(0));
+  // The byte sets every match's leading bytes are in, up to 8 of them.
+  prefix List<Bool> = List(Bool);
+  r!begin();
+  reached Bool=r!follow(entry, Bool(false));
+  nullable Bool=r.matched;
+  if(~nullable) {
+    k Int=Int(1);
+    k!to(Int(8)) {
+      if(~r.matched) {
+        front List<Int> = r.list;
+        r!begin();
+        base Int=prefix:size();
+        b Int=Int(1);
+        b!to(Int(256)) {
+          prefix!push(Bool(false));
+        }
+        i Int=Int(1);
+        i!to(front:size()) {
+          pc Int=front[i];
+          set Int=r.xs[pc];
+          c Int=Int(0);
+          c!to(Int(255)) {
+            if(r:has(set, c)) {
+              prefix[base+c+1]=Bool(true);
+            }
+          }
+          next Int=r.ys[pc];
+          more Bool=r!follow(next, Bool(false));
+        }
+      }
+    }
+  }
+  positions Int=prefix:size()/256;
+  // The pair of positions, or the one, whose bytes are rarest: shares in
+  // millionths over four.
+  best Int=Int(4000000);
+  at1 Int=Int(0);
+  at2 Int=Int(0);
+  shares List<Int> = filled(positions, Int(0));
+  j Int=Int(1);
+  j!to(positions) {
+    c Int=Int(0);
+    c!to(Int(255)) {
+      if(prefix[(j-1)*256+c+1]) {
+        shares[j]=shares[j]+rxFrequency(c);
+      }
+    }
+  }
+  p Int=Int(1);
+  p!to(positions) {
+    q Int=p;
+    q!to(positions) {
+      share Int=shares[p]*shares[q];
+      if(p==q) {
+        share=shares[p]*2000;
+      }
+      if(share<best) {
+        best=share;
+        at1=p-1;
+        at2=q-1;
+      }
+    }
+  }
+  skips Bool=positions>0 and best<400000;
+  set1 List<Bool> = filled(Int(256), Bool(false));
+  set2 List<Bool> = filled(Int(256), Bool(false));
+  if(positions>0) {
+    c Int=Int(1);
+    c!to(Int(256)) {
+      set1[c]=prefix[at1*256+c];
+      set2[c]=prefix[at2*256+c];
+    }
+  }
+  // The byte classes: two bytes share one when every set treats them
+  // alike.
+  classes List<Int> = filled(Int(256), Int(0));
+  sets Int=r.sets:size()/256;
+  k Int=Int(1);
+  k!to(sets) {
+    split List<Int> = filled(Int(512), rxNone());
+    n Int=Int(0);
+    b Int=Int(0);
+    b!to(Int(255)) {
+      key Int=classes[b+1]*2+1;
+      if(r:has(k, b)) {
+        key=key+1;
+      }
+      if(split[key]<0) {
+        split[key]=n;
+        n=n+1;
+      }
+      classes[b+1]=split[key];
+    }
+  }
+  b Int=Int(0);
+  b!to(Int(255)) {
+    if(classes[b+1]==r.reps:size()) {
+      copy Int=b;
+      r.reps!push(copy);
+    }
+    r.classes!push(I32.wrap(classes[b+1]));
+  }
+  forward RxTable=r!dfa(head, Bool(true), skips);
+  reverse RxTable=r!dfa(backEntry, Bool(false), Bool(false));
+  return Rx(nullable, r.classes, forward, reverse, skips, positions, at1, at2, set1, set2);
+}
+
+// --- searching -------------------------------------------------------------------
+
+// The prefix test's next position at or after `i` (0-based) where a match
+// can start; the text's length if none.
+Int skipPrefix(this Rx, text String, i Int) {
+  n Int=text:byteCount();
+  fits Int=n-this.least+1;
+  if(i>=fits) {
+    return n;
+  }
+  at Int=i+1;
+  k Int=Int(1);
+  k!to(fits-i) {
+    if(this.set1[Int(text:byteAt(at+this.at1))+1] and this.set2[Int(text:byteAt(at+this.at2))+1]) {
+      return at-1;
+    }
+    at=at+1;
+  }
+  return n;
+}
+
+Int resume(this Rx, text String, i Int) {
+  if(this.skips) {
+    return this:skipPrefix(text, i);
+  }
+  return i;
+}
+
+// The end (0-based, past its last byte) of the leftmost-first match that
+// starts at or after `at`, or -1.
+Int findEnd(this Rx, text String, at Int) {
+  n Int=text:byteCount();
+  s Int=this.forward.start;
+  special Int=this.forward.special;
+  matchEnd Int=this.forward.matchEnd;
+  last Int=rxNone();
+  if(this.nullable) {
+    last=at;
+  }
+  i Int=this:resume(text, at);
+  k Int=Int(1);
+  k!to(n+1) {
+    if(i>=n) {
+      return last;
+    }
+    s=Int(this.forward.trans[s+Int(this.classes[Int(text:byteAt(i+1))+1])+1]);
+    i=i+1;
+    if(s<special) {
+      kind Bool=if(s>=matchEnd) {
+        i=this:resume(text, i);
+      }
+      kind!elif(s==0) {
+        return last;
+      }
+      kind:else() {
+        last=i;
+      }
+    }
+  }
+  return last;
+}
+
+// Where the reverse DFA, run back from `end` no further than `low`, last
+// matched: the leftmost start of a match that ends at `end`; -1 if none.
+Int findStart(this Rx, text String, low Int, end Int) {
+  s Int=this.reverse.start;
+  matchEnd Int=this.reverse.matchEnd;
+  first Int=rxNone();
+  if(s<matchEnd) {
+    first=end;
+  }
+  i Int=end;
+  k Int=Int(1);
+  k!to(end-low) {
+    s=Int(this.reverse.trans[s+Int(this.classes[Int(text:byteAt(i))+1])+1]);
+    i=i-1;
+    if(s<matchEnd) {
+      if(s==0) {
+        return first;
+      }
+      first=i;
+    }
+  }
+  return first;
+}
+
+// Every match, left to right, as the regex crate's find_iter yields them:
+// its start and end (0-based, the end past its last byte), two to a match.
+// No two overlap, and no empty match comes where the previous one ended.
+List<Int> matches(this Rx, text String) {
+  out List<Int> = List(Int);
+  n Int=text:byteCount();
+  at Int=Int(0);
+  lastEnd Int=rxNone();
+  k Int=Int(1);
+  k!to(n+2) {
+    if(at>n) {
+      return out;
+    }
+    e Int=this:findEnd(text, at);
+    if(e<0) {
+      return out;
+    }
+    s Int=this:findStart(text, at, e);
+    if(s==e and e==lastEnd) {
+      if(at==n) {
+        return out;
+      }
+      e=this:findEnd(text, at+1);
+      if(e<0) {
+        return out;
+      }
+      s=this:findStart(text, at+1, e);
+    }
+    out!push(s);
+    out!push(e);
+    at=e;
+    lastEnd=e;
+  }
+  return out;
+}
+
+// The number of matches. A match that cannot be empty is counted from its
+// end alone: only a match's start takes the reverse DFA.
+Int count(this Rx, text String) {
+  if(this.nullable) {
+    return this:matches(text):size()/2;
+  }
+  total Int=Int(0);
+  at Int=Int(0);
+  k Int=Int(1);
+  k!to(text:byteCount()+1) {
+    e Int=this:findEnd(text, at);
+    if(e<0) {
+      return total;
+    }
+    total=total+1;
+    at=e;
+  }
+  return total;
+}

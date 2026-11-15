@@ -732,3 +732,52 @@ HuffDecode's 16-byte node and whole-byte loop; 3 interleaved rounds.
 - Worst left vs clang: LogParser 1.50, Maze::Generator 1.39,
   Binarytrees::Arena 1.38, ArithEncode 1.38, LZWEncode 1.38, LZWDecode
   1.30, Binarytrees::Obj 1.29.
+
+### Maze::Generator (1.25× by medians): `ZANE_LOOP_INLINE`, `ZANE_ELEM_TBAA`
+
+Session of 2026-11-15. Medians of 7–9 interleaved runs from here on
+(`med.sh`-style: pinned to CPU 2, binaries alternated each round).
+
+- Start: Zane 0.622, Goose/clang 0.501, Goose/gcc 0.570. Huge pages are
+  on for the 47 MB cell list and help (0.575 vs 0.651 with `ZANE_HUGE=0`);
+  Goose's malloc gets none (THP is `madvise`).
+- callgrind (3 iterations, `--cache-sim --branch-sim`): Zane has *fewer*
+  D1 misses (6.8 M vs 8.2 M) and mispredicts (7.8 M vs 7.1 M about the
+  same) in the timed code, but 914 M instructions against Goose's 654 M.
+  The DFS is bound on the miss of each neighbor's `kind`; a fatter loop
+  body keeps fewer of those misses in flight.
+- `adjacentOpen` stayed a call in `dig` (LLVM: cost 480, threshold 225;
+  the loop over `degree` unrolled to four checked index loads). Goose's
+  `count(...) { ... }` is inline by construction.
+  `ZANE_LLVM_OPTS=-inline-threshold=600` gave 0.622 → 0.563, but on all 50
+  (3 rounds) it is a wash with big swings: Graph::BFS 1.52 → 1.75,
+  GameOfLife 0.70 → 0.85, Json::ParseDom 0.13 → 0.10, Brainfuck::Array
+  2.22 → 1.81 (layout). Not taken.
+- `ZANE_LOOP_INLINE=N` (new, compiler `lib/codegen/loop_inline.ml`): after
+  LLVM's passes, a call in a cycle of its caller's blocks to a function of
+  the program that is a loop-free leaf (only noreturn functions and
+  intrinsics called) of at most N instructions is marked `alwaysinline`,
+  then always-inline and a cleanup run again. A first version judged
+  callees before the passes: it also inlined SliceMap's byte-compare loop
+  `same` into its probe loop (Words 0.570 → 0.638, +12%) and the bundled
+  C, so it now looks at the optimized callee and skips any with a loop.
+  With N=128 it takes `adjacentOpen` (112 instructions), CacheSimulation's
+  `front` (74) and two regex-setup helpers, nothing else.
+  Maze::Generator 0.578 → 0.531, CacheSimulation 1.087 → 1.046 (medians
+  of 9). Goose/clang 0.437 in the same runs: 1.32× → 1.21×.
+- `ZANE_ELEM_TBAA=1` (new, `lib/codegen/elem_tbaa.ml`): the stack's push
+  stores an `i32` with the same sized TBAA tag as the cells' fields, so
+  LLVM takes the push to have written the current cell. Each scalar access
+  traced to a `List_at`/`List_push` address now gets a child of its sized
+  tag for the list's stride, and a per-stride `!alias.scope`/`!noalias`;
+  a runtime push call of stride s is `!noalias` every other stride's
+  scope (lists of different strides never share a block, the same
+  assumption as the handle/scalar split). It tags correctly but changes
+  nothing here: the reloads after a push are of loads that were only
+  partly available before it (behind `adjacentOpen`'s `degree` exits).
+  All 50, 3 rounds: geomean 1.008, noise. Left off.
+- What is left in Maze::Generator (1.2×): per neighbor, our checked
+  1-based index (`movslq; lea -1; cmp; jae`) and the ×24 scaling
+  (`lea (r,r,2)`, then the load) against Goose's self-relative 32-bit
+  pointer (`movslq; movzbl (r,off)`), and a reset loop that branches per
+  cell where Goose's is vectorized.

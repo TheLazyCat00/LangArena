@@ -603,3 +603,26 @@ cost 450 instructions each against Goose's 263. Now as Goose's
   worse), and `Rx.classes` as a fixed `Array<I32,256>` (the byte's class
   check goes, but the 1 KiB array is copied with the `Rx` into
   `matches`: Regex 1.98 → 2.35).
+
+### `ZANE_LITERAL_LOCALS`: a local string literal places no frame
+
+`lut String=String(".-+*XM")` is a `String`, a type that can own a
+block, so lowering holds it in its scope's arena, and the function
+places, zeroes, links and drains a 256-byte frame on every call, though
+the fold finds the value is constant bytes and its reads already read
+the constant. The new pass (compiler `lib/optimize/literal_locals.ml`,
+after the fold) binds such a `Hold` by a plain `Let` when the local is
+never assigned, moved or lent by address, and drops the scope it leaves
+empty when nothing else is held there and nothing in it can need the
+arena for a fresh owner given to a callee: its calls are runtime reads
+(`zane_array_at`, ...) or functions given no value that can hold a
+handle or an address.
+
+- Repro (a `pick` with a local LUT called 1e8 times): 0.56 → 0.02 s; the
+  loop vectorises once the frame is gone.
+- TextRaytracer is back to the plain `String` LUT (`lut:byteAt`) instead
+  of the hand-written `Array<U8,6>`: 0.99 s without the switch, 0.83 with
+  it, the `Array` port 0.82, Goose/clang 0.85 (9 interleaved rounds).
+- 50/50 checks pass. No other benchmark has a local literal that
+  qualifies (codec's `pattern` scope also holds a buffer; csvbench's
+  `truth` is assigned).

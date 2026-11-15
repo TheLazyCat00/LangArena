@@ -56,10 +56,9 @@ Int pixel(ray Vector, scene Array<Sphere, 3>) {
       lam Float=max(Float(0.0), min(Float(1.0), dot(normal(light-point), n)));
       color Vector=scale(Vector(Float(1.0), Float(1.0), Float(1.0)), lam*Float(0.5))+scale(sphere.color, Float(0.3));
       level Int=Int.truncate((color.x+color.y+color.z)/Float(3.0)*Float(6.0));
-      // As Goose's LUT: ". - + * X M" as a constant byte array.
-      lut Array<U8, 6> = Array([U8(46), U8(45), U8(43), U8(42), U8(88), U8(77)]);
+      lut String=String(".-+*XM");
       if(level>=0 and level<6) {
-        return Int(lut[level+1]);
+        return Int(lut:byteAt(level+1));
       }
       return Int(32);
     }

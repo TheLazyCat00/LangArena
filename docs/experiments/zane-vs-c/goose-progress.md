@@ -203,3 +203,20 @@ Maze::Generator 1.5, Template::Parse 1.5, LZWEncode 1.4.
 - Maze::Generator: same structure (neighbours as 32-bit indices, Goose's
   as compressed 32-bit references); `adjacentOpen` compiles to a tight
   unrolled count. Bound by the scattered cell loads; left.
+
+## Re-measure (step 21, `step21-goose.json`)
+
+Zane / Goose-clang 1.14 geomean (step 19: 1.31), faster on 17; Zane /
+Goose-gcc 0.91 (1.08), faster on 28. Worst vs clang: LZWDecode 2.8,
+LogParser 2.5, SHA256 2.3, HuffDecode 2.1, BWTEncode 1.9,
+Binarytrees::Arena 1.8, Template::Parse 1.8, CSV 1.7, Ast 1.6,
+GameOfLife 1.55, Sort::Merge 1.5. Single-test runs are noisy at ±10%.
+
+## Open questions for the user
+
+- A conditional loop (`while`/`break`) in core and the compiler: Goose's
+  CSV reader and the calculator's scanners are tight `while` loops; ours
+  stand in with `i!to(bound)` and an early return, which also wakes IRCE
+  on loops that run once (Ast).
+- A regex library for Zane (LogParser), and a comparator / key-pair
+  stable sort in core (BWTEncode): both library projects.

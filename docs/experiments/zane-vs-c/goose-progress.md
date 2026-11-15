@@ -590,3 +590,16 @@ cost 450 instructions each against Goose's 263. Now as Goose's
 - The last partial block is one overlapping load, its searched
   positions shifted out of the mask, not a byte loop: → ~0.34 (the
   machine swings ±10% today).
+
+### Template::Regex and Template::Parse now ahead of Goose
+
+- The key trim in `substitute` walked every byte of every key twice,
+  since `and` evaluates both sides and the loop never left early; now
+  `firstNonSpace`/`lastNonSpace` return at the first non-space, as
+  Goose's `trim` stops: Regex 2.12 → 1.37 (Goose 1.54), Parse 1.34 →
+  0.92 (Goose 0.94). callgrind had `substitute` at 4.16 G instructions.
+- Tried and reverted: a hash tag in each `BytesMap` slot as Goose's
+  dictionary keeps (16-byte slots: LZWEncode 0.76 → 0.90, Regex
+  worse), and `Rx.classes` as a fixed `Array<I32,256>` (the byte's class
+  check goes, but the 1 KiB array is copied with the `Rx` into
+  `matches`: Regex 1.98 → 2.35).

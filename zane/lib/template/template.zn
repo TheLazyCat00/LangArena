@@ -150,25 +150,37 @@ Unit prepare(this State) mut {
 // text, spaces at either end left out, appended to `out`; nothing for an
 // unknown key.
 Unit substitute(this List<U8>, state State, start Int, end Int) mut {
-  first Int=start;
-  k Int=Int(1);
-  k!to(end-start+1) {
-    if(first<=end and Int(state.bytes[first])==32) {
-      first=first+1;
-    }
-  }
-  last Int=end;
-  j Int=Int(1);
-  j!to(end-first+1) {
-    if(last>=first and Int(state.bytes[last])==32) {
-      last=last-1;
-    }
-  }
+  first Int=firstNonSpace(state.bytes, start, end);
+  last Int=lastNonSpace(state.bytes, first, end);
   index Int=state.variables:findIn(state.keys, state.bytes, first, last-first+1);
   if(index>0) {
     this!appendRange(state.values, state.valueStarts[index], state.valueLengths[index]);
   }
   return Unit();
+}
+
+// As Goose's trim: the first position from `start` to `end` that is not a
+// space, stopping there; past `end` if none.
+Int firstNonSpace(bytes List<U8>, start Int, end Int) {
+  i Int=start;
+  i!to(end) {
+    if(Int(bytes[i])~=32) {
+      return i;
+    }
+  }
+  return end+1;
+}
+
+// The last position from `end` back to `first` that is not a space;
+// before `first` if none.
+Int lastNonSpace(bytes List<U8>, first Int, end Int) {
+  k Int=Int(0);
+  k!to(end-first) {
+    if(Int(bytes[end-k])~=32) {
+      return end-k;
+    }
+  }
+  return first-1;
 }
 
 // The first position from `start` on where "}}" begins; 0 if none.

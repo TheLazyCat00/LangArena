@@ -483,3 +483,12 @@ Everything through `ZANE_IDLE_SEARCH`, against the step-23 binary (`old`):
   each small self-recursive function an always-inlined copy `f$peel` that
   its self-calls go to, so one level of recursion is inlined. Not useful:
   Binarytrees::Arena 0.584 → 0.608, Sort::Quick 1.636 → 1.736. Off.
+
+### GameOfLife: 0.90 → 0.80 s (Goose/clang 0.69)
+
+Cells now laid out as Goose's: inline in one `List<Cell>` (was a
+`ListRef` of boxed cells, each with its own `List<Int>` of neighbours),
+the eight neighbours as `Array<I32,8>`. The step loop is fully unrolled;
+what is left per neighbour is the checked index (`movslq; dec; cmp; jae`)
+and the ×34 element scaling (`mov; shl; lea`), against Goose's unchecked
+byte offset.

@@ -323,3 +323,35 @@ New switch this run: `ZANE_ARM_CHECKS=1` (below); `SW` plus it is the build.
   and leaves at `(n+j) >> s`, against `(n+k) >> s` with k >= j, made false;
   also, a straight run of checks of `x+k` against one bound made one check
   of the lowest and highest offsets. Then `slp-vectorizer` again: 0.45 s.
+
+### LZWDecode: 0.50 → 0.21–0.24 s (Goose/clang 0.18–0.21)
+
+- The timed part is all user time, about 76% of it in libc's memcpy. A
+  memcpy/memmove interposer (per call site, bytes and calls) shows that
+  each decode copies about 5.2 MB, against Goose's 1.3 MB:
+  - the appends (`appendOwn`, `appendRange`): 2 × 1 MB, the same as
+    Goose's;
+  - `zane_list_grow`: about 2.2 MB in 52 calls, as `strings`, `starts`,
+    `lengths` and `out`, interleaved in one region, double through heap
+    blocks to 1 MiB. Goose grows through `realloc`, which for blocks past
+    128 KiB moves pages (mremap), not bytes;
+  - one 1 MB copy per step, in the list type's move walk (ICF-folded into
+    `brainfuck$Tape.move`): `this.decoded = decode(...)` moves the result
+    from the call's region into `State`'s, by allocating there, copying
+    and freeing the old block.
+- Compiler `ZANE_REHOME=1` (`walks.ml`, runtime `zane_relocate`): a moved
+  list's or string's block that is a growable span in the same context is
+  handed over: its mapping leaves the old region's list for the new one's
+  and its chunks are re-entered in the chunk map, with no byte copied.
+  Alone, that was 0.51 → 1.3 s: the old `decoded`, freed on the next
+  overwrite, went to `State`'s region stack, so every decode mapped fresh
+  pages (478k minor faults). A handed-over span is flagged, and
+  `zane_free` gives a flagged span to its context's kept spans instead,
+  where the next list past 1 MiB takes it resident: 0.35 s.
+- Compiler `ZANE_LIST_SPANS=N` (runtime `zane_list_span_from`, a weak
+  global that zanec defines): a list whose block grows past N bytes has its
+  room doubled past 1 MiB at once and takes a growable span, from where it
+  grows in place. The runtime's rule that a list block past
+  `ZANE_CHUNK - ZANE_LINE` is the one block of its span still holds, so
+  nothing else changes; a list from 128 KiB to 1 MiB uses more address
+  space, but only its touched pages use RAM. With N = 131072: 0.21–0.24 s.

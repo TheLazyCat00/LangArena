@@ -40,14 +40,23 @@ The last three are from step 27's round:
 | `ZANE_BUMP_REGIONS` | No gain: the frontier's load and store were the chain, not the free list (goose-comparison). |
 | `ZANE_CHUNK_BOXES` | About 5% slower on binarytrees than image boxes, same memory; for platforms where the image window cannot be placed (goose-comparison). |
 
-## Off: never tried in LangArena
+## Off: no record of a LangArena build with them
 
 `ZANE_POOLED_VARIANTS`, `ZANE_POOL_REGISTERS`, `ZANE_POOL_UNCHECKED`,
 `ZANE_PACKED_NODES`: a recursive variant kept as packed nodes in one pool,
-as Goose's are. In the compiler's goose-comparison experiment pooled
-binarytrees took a quarter less user time. Worth trying on
-Binarytrees::Obj (1.29× at step 27); keep them only if all 50 checks pass
-and a full run does not regress.
+as Goose's are. Nothing in this repo, its history or the logs of this
+experiment shows a LangArena build with them set, though an unlogged
+earlier try cannot be ruled out.
+
+They were measured in the compiler's own goose-comparison experiment
+(`docs/experiments/goose-comparison/README.md`, "Pooled variants") on
+its binarytrees port: 0.112 → 0.091 s, and 0.081 s with partial
+inlining. That log lists the prototype's limits (among them: no reading
+a pooled subtree out as a value, no other pooled type in a node, no
+function value that returns a pooled variant), so whether LangArena's
+port fits them is not known yet. Worth trying on Binarytrees::Obj (1.29×
+at step 27): check the limits first, keep the switches only if all 50
+checks pass and a full run does not regress.
 
 ## Debug and tooling switches (not optimizations)
 

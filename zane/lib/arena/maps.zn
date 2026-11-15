@@ -1,23 +1,27 @@
 package arena;
 import core$;
 import math$;
+// Open addressing over a power of two slots, a slot from the top bits of
+// a Fibonacci hash of the key, as StringMap's.
 type IntMap = struct {
   keys List<Int>;
   values List<Int>;
   used List<Bool>;
   entries Int;
+  shift Int;
 }
 
 IntMap(capacity Int) => init {
-  keys=filled(capacity, Int(0));
-  values=filled(capacity, Int(0));
-  used=filled(capacity, Bool(false));
+  keys=filled(shiftLeft(Int(1), tableBits(capacity)), Int(0));
+  values=filled(shiftLeft(Int(1), tableBits(capacity)), Int(0));
+  used=filled(shiftLeft(Int(1), tableBits(capacity)), Bool(false));
   entries=Int(0);
+  shift=Int(64)-tableBits(capacity);
 }
 
 Int slot(this IntMap, key Int) {
   capacity Int=this.keys:size();
-  index Int=rem(u32(key*2654435761), capacity)+1;
+  index Int=shiftRightLogical(key*(Int(0)-Int(7046029254386353131)), this.shift)+1;
   probe Int=Int(1);
   probe!to(capacity) {
     if(~this.used[index]) {
@@ -26,7 +30,10 @@ Int slot(this IntMap, key Int) {
     if(this.keys[index]==key) {
       return index;
     }
-    index=rem(index, capacity)+1;
+    index=index+1;
+    if(index>capacity) {
+      index=Int(1);
+    }
   }
   return Int(0);
 }
@@ -61,6 +68,26 @@ Unit put(this IntMap, key Int, value Int) mut {
     this.values[index]=value;
   }
   return Unit();
+}
+
+// Adds amount to key's value, inserting key with value amount when it is
+// absent, and returns the new value: one probe, as Goose's dictionary
+// `update` and `get_or_insert`.
+Int add(this IntMap, key Int, amount Int) mut {
+  index Int=this:slot(key);
+  if(index==0) {
+    return Int(0);
+  }
+  if(~this.used[index]) {
+    this.entries=this.entries+1;
+    this.used[index]=Bool(true);
+    this.keys[index]=key;
+    this.values[index]=amount;
+    return amount;
+  }
+  value Int=this.values[index]+amount;
+  this.values[index]=value;
+  return value;
 }
 
 // Open addressing over a table of slots, each 0 (empty) or the 1-based

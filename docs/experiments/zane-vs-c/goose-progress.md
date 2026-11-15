@@ -418,3 +418,22 @@ rounds, minimum of each:
   nested.
 - `StringMap` hashes with the runtime's word-at-a-time hash (`hashBytes`,
   the one `hashRange` uses) instead of djb2 per byte.
+
+### HuffDecode: looked at, left at about 2× (Goose/clang 0.69–0.81 s)
+
+- The node is now Goose's (narrow fields and an `is_leaf` flag, 14 bytes
+  packed); no change in time. Per bit our chain is `dec`, `shl`, `add` and
+  the child's load (an index becomes an address); Goose's and C's are
+  pointer chases, a load each. Padding the node to 16 bytes (a shift for
+  the stride) did not change it either. A flat child table (`kids[2c+bit]`,
+  leaf as a negative entry) would match a pointer chase, but it is neither
+  Goose's nor C's design, so it is left out.
+
+### CSV::Parse: 0.99–1.08 → 0.73–0.79 s (Goose/clang 0.53–0.56)
+
+- The field loop is Goose's `csv::each_record` shape (a quoted field ends
+  at its closing quote, any other at the first separator, line break or
+  quote), each end found by `findAny` rather than a test of every byte.
+- `zane_parse_f64` (0.68 s of samples to Goose's `parse_flt` 0.45) is the
+  same algorithm as Goose's (digits folded, one division by an exact power
+  of ten); its code is as tight; left.

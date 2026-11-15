@@ -29,6 +29,10 @@ Earlier work and the issue list (R1–R8, B1–B3) are on the
   python3 docs/experiments/zane-vs-c/measure.py --rounds 3 --out results.json
   ```
 
+  It swaps the C/Zane order on every other round. The runs recorded up to
+  step 18 predate that and ran C first in every round, so their Zane / C
+  ratios may carry an order bias; from step 19 on, `tri.py` rotates the order.
+
 - Timings come from a 4-core cloud container, so they are noisy (a few %);
   each number is the minimum of its rounds.
 

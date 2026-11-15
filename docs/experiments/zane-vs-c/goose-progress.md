@@ -639,3 +639,17 @@ against Goose's clang and gcc builds.
   LZWEncode 1.23, Maze::Generator 1.22, GameOfLife 1.21.
 - Template::Regex and Template::Parse are ahead now, and
   TextRaytracer/LZWDecode are within noise.
+
+### Binarytrees::Arena and HuffDecode after step 26: looked at, left
+
+- Arena: same page faults and memory as Goose (6.3 k minor faults, 27 MB);
+  the gap is `build`. `ZANE_PEEL_RECURSION=1` now gives Goose's shape
+  (depth-1 children written in place, no call), and one run had Arena
+  0.556 → 0.506, but a 3-round run of all 50 tests against step 26 is a
+  wash (geomean 0.998) and 5 interleaved rounds of the extremes are all
+  within noise, Arena included (0.565 vs 0.598). Left off.
+- HuffDecode (2.2×): latency-bound on the per-bit chain `dec` (1-based
+  index), stride ×14 (`lea`/`shl`/`sub`), base add, load: about 9
+  cycles against Goose's single pointer load. Taking the `dec` off the
+  chain is the biased-base idea, which is not being pursued; the 16-byte
+  stride was tried before. Left.

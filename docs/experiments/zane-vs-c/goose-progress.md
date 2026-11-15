@@ -355,3 +355,20 @@ New switch this run: `ZANE_ARM_CHECKS=1` (below); `SW` plus it is the build.
   `ZANE_CHUNK - ZANE_LINE` is the one block of its span still holds, so
   nothing else changes; a list from 128 KiB to 1 MiB uses more address
   space, but only its touched pages use RAM. With N = 131072: 0.21–0.24 s.
+
+## Re-measure (step 23, `step23-goose.json`, `step23-goose.md`)
+
+All switches so far, `ZANE_REHOME=1` and `ZANE_LIST_SPANS=131072` included,
+against the step-22 binary (`old` in the JSON) and Goose, three interleaved
+rounds, minimum of each:
+
+- Zane / Goose-clang geomean 1.087 (faster on 12), Zane / Goose-gcc 0.940
+  (faster on 23); the step-22 binary in the same run: 1.107 and 0.958.
+- Zane against the step-22 binary: geomean 0.98; LZWDecode 0.46. The
+  largest slowdowns in the table (Words 1.15, TextRaytracer 1.13,
+  Maze::BFS 1.12) do not reproduce in interleaved reruns, except
+  TextRaytracer by about 3%.
+- Worst left: LogParser 2.26, HuffDecode 2.12, CSV::Parse 1.74,
+  Calculator::Ast 1.52, Template::Parse 1.48, NeuralNet 1.43,
+  Spectralnorm 1.40, TextRaytracer 1.39, Binarytrees::Arena 1.38,
+  Maze::Generator 1.34, Template::Regex 1.33, LZWDecode 1.30.

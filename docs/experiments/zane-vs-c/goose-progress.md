@@ -225,3 +225,78 @@ GameOfLife 1.55, Sort::Merge 1.5. Single-test runs are noisy at ±10%.
 ## Compiler PR
 
 Opened zane-lang/compiler#378 (branch `perf/list-ranges-float-reads`) on 2026-11-15 with the compiler side of this work.
+
+# Second run (2026-11-15, branch `experiment/zane-vs-goose`)
+
+The user lifted two limits for this run: a regex library (LogParser) and a
+comparator/key sort in core (BWTEncode) are allowed. Goal: Zane about as
+fast as Goose, or faster, on every test.
+
+## Setup
+
+- Compiler: `/home/user/compiler`, branch `experiment/zane-vs-goose` off
+  v0.37 (f67247f, which has compiler#378). Core: `/home/user/core`, the same
+  branch name, off v0.11 (bfdcb3c). LangArena: branch
+  `experiment/zane-vs-goose` off `zane`.
+- Toolchain: release v0.37 (`build.sh` now copies v0.37 to `dev`), compiler
+  built with `pixi run just build`; the same `SW` switches as before.
+- Goose: `aardappel/goose` at 369c7a2 (the arena's pin), built with cmake as
+  `docker/goose_clang`; benchmark `goose -O2 --standalone`, then clang 18.1.3
+  / gcc 13.3 `-O2` (Ubuntu 24.04 compilers, a different machine from the
+  first run).
+- Report: `rep.py STEP.json` prints the table, worst ratio first.
+
+## Baseline (step 22, `step22-goose.json`, `step22-goose.md`)
+
+Zane (v0.37 + switches) / Goose-clang 1.106 geomean, faster on 16; Zane /
+Goose-gcc 0.950, faster on 23. Worst vs clang: LZWDecode 3.1, LogParser 3.0,
+HuffDecode 2.2, SHA256 1.8, BWTEncode 1.8, CSV 1.7, Template::Parse 1.6,
+Binarytrees::Arena 1.5, Sort::Merge 1.4, Template::Regex 1.4, GameOfLife
+1.35, NeuralNet 1.3, LZWEncode 1.3, ArithEncode 1.3, Binarytrees::Obj 1.3,
+Ast 1.3.
+
+Note on building: `zanec` embeds the runtime's C when it is built, so a
+runtime change needs `pixi run just build` before `build.sh`; and `zane
+build` keeps its own cache in `zane/out`, which does not see a new compiler
+or runtime, so `build.sh` now empties `out/` whenever either changed. The
+port's `zane.coda` points at the local core (`core v0.11 /home/user/core`).
+New switch this run: `ZANE_ARM_CHECKS=1` (below); `SW` plus it is the build.
+
+### BWTEncode: 0.84 → 0.39–0.48 s (Goose/clang 0.47)
+
+- Goose sorts the suffix array each round with std `stable_sort`, a
+  natural merge sort with a comparator over (rank, next rank) pairs. Ours
+  ran two counting sorts per round, as C.
+- Compiler + core: `List<I32>.sortBy(keys List<Int>)`: the indices sorted
+  stably by the 64-bit key each names (runtime `zane_list_sort_by`), a
+  natural merge sort as Goose's: runs found first (descending ones
+  reversed, short ones made 16 by insertion), merges that copy a pair of
+  runs already in order, a branchless pick while the merges alternate
+  sides often and a branch otherwise. Port: one key per suffix,
+  `rank*2^32 + next rank`, one `sortBy` per round, new ranks from equal
+  keys.
+- Of 17 rounds only 3 merge anything (runs 2842, 2276, 1139 of 100000);
+  the other 14 find one run. A first version sorted (key, value) pairs,
+  16 bytes moved per element per pass: 0.73–0.78 s. Indices with the key
+  looked up (Goose's layout): the same, as the branchless merge waits on
+  two dependent loads per pick; with Goose's switch to a branch when the
+  merge alternates rarely: 0.39–0.48.
+
+### Sort::Merge: 1.96 → 1.50 s (Goose/clang 1.35)
+
+- Port as Goose's: the range copied to temp in one copy (new
+  `List.copyRange(at, from, start, count)`, runtime `zane_list_copy`, a
+  memmove), merged while both halves have elements, the left half's rest
+  copied back. A `guard` in a `to` body ends that iteration only, so the
+  loop runs on, doing nothing, to its count; the merge is a function of
+  its own whose loop `return`s.
+- That alone: 2.0–2.2 s. The pick stayed a branch: each arm checks `k`
+  against `work`'s count before its store, so LLVM cannot sink the two
+  stores into one store of a select.
+- Compiler `Arm_checks` (`ZANE_ARM_CHECKS=1`, post-pipeline, as
+  `Merged_checks`): where both arms of a branch only check the same index
+  against the same bound, the check goes above the branch; then, in a
+  diamond whose arms each store to the same address with only arithmetic
+  after, the stores move to the arms' ends, so SimplifyCFG sinks them into
+  one store and the arms become selects. Also fires in huffman decode,
+  distance and yyjson. 1.50 s.

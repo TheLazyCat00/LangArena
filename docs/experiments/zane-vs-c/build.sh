@@ -27,8 +27,17 @@ if [ "$stamps" -ne 1 ] || [ ! -e "$T/dev/share/runtime/.stamp-$stamp" ]; then
       "$T/dev/bin/zanec" --bundle-runtime "$T/dev/share/runtime" --target x86_64-linux-gnu $o
   done
   touch "$T/dev/share/runtime/.stamp-$stamp"
+  fresh=1
 fi
 cd "$(dirname "$(readlink -f "$0")")/../../../zane"
+# zane's own build cache does not see a changed runtime or compiler: start
+# from nothing whenever either changed.
+zstamp=$(md5sum "$T/dev/libexec/zanec" | cut -c1-32)
+if [ -n "${fresh:-}" ] || [ ! -e "out/.zanec-$zstamp" ]; then
+  rm -rf out
+  mkdir -p out
+  touch "out/.zanec-$zstamp"
+fi
 # Drop two harmless linker warnings without losing zane's exit status.
 log=$(mktemp)
 ZANE_COMPILER="$T/dev/bin/zanec" "${ZANE:-zane}" build >"$log" 2>&1 && ok=0 || ok=$?

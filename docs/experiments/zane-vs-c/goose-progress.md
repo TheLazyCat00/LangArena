@@ -124,3 +124,16 @@ Maze::Generator 1.8, Words 1.7, Interpreter 1.6, Sort::Merge 1.5.
   `-unroll-count=8` and `-unroll-runtime-epilog=true` (ZANE_TRY_LLVM) do
   not change it: the unrolled loop's start alignment is not known, so
   the index does not fold. Needs the IR read; left open.
+
+### HuffDecode: 1.33 → 1.20–1.25 s (Goose/clang 0.58); open
+
+- Port read the encoded bytes and pushed each decoded byte through the
+  FFI `Buffer` (a foreign call per byte). Now as Goose's: `byteAt` on
+  the String, a `List<U8>` out, given back as bytes (a String only for
+  the final compare).
+- Reading the node once before the left/right choice (so it can be a
+  select) was slower, 1.34: the predicted branch beats the select on the
+  load chain. Goose: branchless child offset from the bit, the 8-bit loop
+  fully unrolled, a leaf flag byte, node pointers (no index scaling).
+  Ours: `b!to(min(8, remaining))` is not unrolled, the leaf test reads two
+  fields. Left open.

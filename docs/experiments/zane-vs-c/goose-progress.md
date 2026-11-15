@@ -683,3 +683,20 @@ invariant and the check keeps its own `index - 1`. 50/50 checks pass.
   the bias the same padding measured no gain earlier (step 23-24); the
   re-check of that is still to run. The padded node is in the port for
   now.
+
+#### `ZANE_BIASED_BASE` measured (medians of interleaved runs)
+
+The machine swings ±25% between batches today, so these are medians of
+7–12 interleaved runs, not minimums.
+
+- HuffDecode (12 runs): step 26 1.497, 16-byte node only 1.450, biased
+  base only 1.371, both 1.236 (−17%). Both stay.
+- All 50, 3 rounds (`biased-base.json`): geomean 1.006 against step 26,
+  inside the noise. The extremes, again by medians of 7:
+  Brainfuck::Recursion 2.242 → 1.981, NeuralNet 1.474 → 1.307, Words
+  0.710 → 0.633; Sort::Self 0.415 → 0.406 and Template::Regex 1.538 →
+  1.584 the same; Brainfuck::Array 1.739 → 2.001. Its loop is the same
+  instructions both ways (the cell's `- 1` is a displacement now, as
+  `incb -0x1(%r12,%r9,1)`), an indirect-jump dispatch whose time moves
+  with code placement, so that is layout, not the bias.
+- On from here (builds use `ZANE_BIASED_BASE=1`).

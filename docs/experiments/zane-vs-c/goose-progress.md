@@ -518,3 +518,15 @@ only by luck of inlining. New bisecting switches: `ZANE_FRAME_SHADOW_ONLY`
   its loop); ours does two 64-bit `idiv` per symbol. Our divisor is also
   reloaded from the frame after every `emit` call, which LLVM does not
   inline (inlining it at threshold 400 gains nothing).
+- `ZANE_DIV_CACHE=1` (new, `lib/codegen/div_cache_stubs.cpp`): each
+  64-bit signed division or remainder in a loop by a non-constant divisor
+  keeps the divisor it last saw and its libdivide multiplier and shift
+  (`zane_div_magic` in runtime/block.c, Goose's `gs_divu_gen` algorithm)
+  in allocas that SROA makes loop registers. A new divisor computes them
+  again; 0, 1 and -1 divide the plain way. The quotient of |x| by |d| is
+  libdivide's unsigned one, signed as x·d. Checked against 20 M random
+  pairs (both signs, the extremes, powers of two). Caching by value, not
+  proving the divisor loop-invariant, because ArithEncode's `total` is
+  reloaded from the frame after each `emit` call. ArithEncode 1.67 → 1.47
+  (Goose/clang 1.03). Its risk is a loop whose divisor changes every
+  time; step 25 measures the whole suite with it.

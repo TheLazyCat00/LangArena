@@ -12,4 +12,4 @@ for r in range(rounds):
         out=p.stdout
         for k,s,v in LINE.findall(out): t[n].setdefault(k,[]).append(float(v) if s=='OK' else None)
         print(f'round {r} {n} done', flush=True)
-json.dump(t,open(sys.argv[0].replace('tri.py','tri.json'),'w'))
+        json.dump(t,open(sys.argv[0].replace('tri.py','tri.json'),'w'))

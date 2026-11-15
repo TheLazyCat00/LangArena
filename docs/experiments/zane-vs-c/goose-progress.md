@@ -530,3 +530,23 @@ only by luck of inlining. New bisecting switches: `ZANE_FRAME_SHADOW_ONLY`
   reloaded from the frame after each `emit` call. ArithEncode 1.67 → 1.47
   (Goose/clang 1.03). Its risk is a loop whose divisor changes every
   time; step 25 measures the whole suite with it.
+
+## Re-measure (step 25, `step25-goose.json`, `step25-goose.md`)
+
+Everything through `ZANE_DIV_CACHE` (first form) plus the GameOfLife,
+BitWriter, Spectralnorm and NeuralNet port changes, against the step-24
+binary (`old`) in the same run: Zane / Goose-clang 1.064 (faster on 17),
+Zane / Goose-gcc 0.910 (faster on 29); `old` 1.055 / 0.903. No net gain:
+
+- Reruns pin two losses on the first `ZANE_DIV_CACHE`: ArithDecode
+  1.26 → 1.61 (its divisor `range` changes every symbol, so every
+  division made a new reciprocal) and Calculator::Interpreter (noise:
+  0.534 / 0.533 over nine rounds). The others in the worse list
+  (Words, NeuralNet, CacheSimulation, Base64) do not reproduce.
+- Fixed: a new divisor is now only noted and divides the plain way; its
+  reciprocal is made the second time it comes. ArithDecode 1.17 / 1.16
+  with and without; ArithEncode 1.45 → 1.38.
+- Worst left vs clang: HuffDecode 2.17, LogParser 1.66, LZWDecode 1.51,
+  Template::Parse 1.50, Template::Regex 1.48, LZWEncode 1.43,
+  ArithDecode 1.43, NeuralNet 1.38, TextRaytracer 1.37,
+  Binarytrees::Arena 1.33.

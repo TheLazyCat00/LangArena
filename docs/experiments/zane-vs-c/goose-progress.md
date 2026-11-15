@@ -713,3 +713,9 @@ The machine swings ±25% between batches today, so these are medians of
   8, as C's `#pragma unroll`: 0.807 (Goose 0.737). 50/50 checks pass.
 - With `ZANE_BIASED_BASE` and the 16-byte node, step 26's 1.497 is now
   0.807: 2.2× → 1.1×.
+- All 50, 3 rounds (`unroll-small.json`, medians): geomean 0.996
+  against the same build without it; HuffDecode 0.80×, Json::Generate,
+  Maze::Generator and TextRaytracer 0.82–0.88×. The worst, by medians of
+  9 more: Base64::Decode 0.149 vs 0.150, CacheSimulation 1.104 vs 1.107,
+  Json::Generate 0.240 vs 0.245 (all the same); Graph::AStar 1.140 vs
+  1.228 by median with the same minimum (1.123 vs 1.120). On from here.

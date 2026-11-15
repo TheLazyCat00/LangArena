@@ -147,3 +147,20 @@ Maze::Generator 1.8, Words 1.7, Interpreter 1.6, Sort::Merge 1.5.
   from the round before, so its runs are long. Ours: two full counting
   sorts per round, as C. 32-bit counts: no change. Matching Goose needs a
   comparator (or key-pair) stable sort in core; left.
+
+## Re-measure (step 20, `step20-goose.json`, before NGram)
+
+Zane / Goose-clang 1.15 geomean (was 1.31), faster on 15; Zane /
+Goose-gcc 0.94 (was 1.08), faster on 26. Worst vs clang now: LZWDecode
+2.8, LogParser 2.5, SHA256 2.2, HuffDecode 2.1, BWTEncode 1.9, NGram 1.8,
+Binarytrees::Arena 1.8, Ast 1.7, Words 1.7, CSV 1.6, Sort::Merge 1.6,
+Maze::Generator 1.5, Template::Parse 1.5, LZWEncode 1.4.
+
+### NGram: 0.57 → 0.244 s (Goose/clang 0.31; 1.8× → 0.8×)
+
+- Port probed its IntMap 2 times per gram of the first string and 4 per
+  gram of the second (get, put, has, get), each probe starting with a
+  `rem` division, and read bytes through the arena FFI. Goose: one
+  probe per gram (`update`), two for the second (`get_or_insert`, `get`).
+- `IntMap` now has power-of-two slots from a Fibonacci hash and a
+  one-probe `add` (as StringMap's); NGram as Goose's, with `byteAt`.

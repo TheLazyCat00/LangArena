@@ -170,3 +170,15 @@ Maze::Generator 1.5, Template::Parse 1.5, LZWEncode 1.4.
 - Goose's dictionary is keyed by word slices of the text; the port made a
   String per word (`slice` of an FFI Buffer). Now the text is a String
   and the words count in a `SliceMap` (new one-probe `add`).
+
+### LZWEncode: 0.72 → 0.67 s; Template::Parse tried, reverted
+
+- `BytesMap` keeps each entry in its slot (`ByteSlot`, three I32s): a
+  lookup reads one slot rather than a slot, then the entry's start and
+  length elsewhere. LZWEncode 0.72 → 0.67 (Goose 0.51).
+- Template::Parse as Goose's (byte lists, the name a trimmed range looked
+  up with `findIn`, values appended with `appendRange`): 1.10 s, no better
+  than the String version (1.0–1.1; Goose 0.67). The time is the slot
+  load missing cache in a 6 MB table (3×50000 keys); reverted. Copying
+  `this.textBytes` into a local cost a whole-list copy per step (lists
+  are values): read fields in place.

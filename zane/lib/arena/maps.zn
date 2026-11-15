@@ -267,3 +267,93 @@ Unit put(this SliceMap, text String, start Int, count Int, value Int) mut {
   }
   return Unit();
 }
+
+// SliceMap's slots keyed by ranges of one byte list rather than of a
+// String, for keys that are made as the list grows (Goose's LZW strings).
+type BytesMap = struct {
+  slots List<Int>;
+  starts List<Int>;
+  lengths List<Int>;
+  values List<Int>;
+  entries Int;
+  shift Int;
+}
+
+BytesMap(capacity Int) => init {
+  slots=filled(shiftLeft(Int(1), tableBits(capacity)), Int(0));
+  starts=List(Int);
+  lengths=List(Int);
+  values=List(Int);
+  entries=Int(0);
+  shift=Int(64)-tableBits(capacity);
+}
+
+Int hash(bytes List<U8>, start Int, count Int) {
+  value Int=Int(5381);
+  i Int=start;
+  i!to(start+count-1) {
+    value=u32(value*33+Int(bytes[i]));
+  }
+  return value;
+}
+
+Bool same(bytes List<U8>, left Int, right Int, count Int) {
+  i Int=Int(0);
+  i!to(count-1) {
+    if(bytes[left+i]~=bytes[right+i]) {
+      return Bool(false);
+    }
+  }
+  return Bool(true);
+}
+
+Int slot(this BytesMap, bytes List<U8>, start Int, count Int) {
+  capacity Int=this.slots:size();
+  index Int=shiftRightLogical(hash(bytes, start, count)*(Int(0)-Int(7046029254386353131)), this.shift)+1;
+  probe Int=Int(1);
+  probe!to(capacity) {
+    entry Int=this.slots[index];
+    if(entry==0) {
+      return index;
+    }
+    if(this.lengths[entry]==count and same(bytes, this.starts[entry], start, count)) {
+      return index;
+    }
+    index=index+1;
+    if(index>capacity) {
+      index=Int(1);
+    }
+  }
+  return Int(0);
+}
+
+// The value at the range's slot, or -1 when the range is not a key.
+Int find(this BytesMap, bytes List<U8>, start Int, count Int) {
+  index Int=this:slot(bytes, start, count);
+  if(index==0) {
+    return Int(0)-Int(1);
+  }
+  entry Int=this.slots[index];
+  if(entry==0) {
+    return Int(0)-Int(1);
+  }
+  return this.values[entry];
+}
+
+Unit put(this BytesMap, bytes List<U8>, start Int, count Int, value Int) mut {
+  index Int=this:slot(bytes, start, count);
+  if(index>0) {
+    entry Int=this.slots[index];
+    if(entry==0) {
+      this.starts!push(start);
+      this.lengths!push(count);
+      this.values!push(value);
+      this.entries=this.entries+1;
+      this.slots[index]=this.entries;
+    }
+    if(entry>0) {
+      this.values[entry]=value;
+    }
+  }
+  return Unit();
+}

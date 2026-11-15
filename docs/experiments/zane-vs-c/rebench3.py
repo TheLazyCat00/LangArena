@@ -12,7 +12,7 @@ R=int(sys.argv[1]); out=sys.argv[2]; import os; t=json.load(open(out)) if os.pat
 for r in range(R):
     for k,b in B.items():
         p=subprocess.run([b,ROOT+'/run.js'],text=True,capture_output=True,cwd=ROOT)
-        if 'Summary:' not in p.stdout: sys.exit(f'{b} exited with {p.returncode}:\n{p.stderr}')
+        if p.returncode not in (0, 1) or 'Summary:' not in p.stdout: sys.exit(f'{b} exited with {p.returncode}:\n{p.stderr}')
         o=p.stdout
         for n,s,v in LINE.findall(o): t[k].setdefault(n,[]).append(float(v) if s=='OK' else None)
         json.dump(t,open(out,'w'),indent=1); print(r,k,flush=True)

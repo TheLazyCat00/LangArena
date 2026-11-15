@@ -13,9 +13,10 @@ LINE = re.compile(r'^(\S+): (OK|ERR\[[^\]]*\]) in ([0-9.]+)s', re.M)
 def run(binary, flt):
     args = [str(binary), str(ROOT / 'run.js')] + ([flt] if flt else [])
     r = subprocess.run(args, text=True, capture_output=True, cwd=ROOT)
-    # A failed checksum exits nonzero too; only a run with no Summary line
-    # (a crash or abort) is incomplete.
-    if 'Summary:' not in r.stdout:
+    # A failed checksum exits 1 after its Summary line. Any other nonzero exit
+    # (a crash, or a filter that matched nothing) or a missing Summary line
+    # is an incomplete run.
+    if r.returncode not in (0, 1) or 'Summary:' not in r.stdout:
         sys.exit(f'{binary} exited with {r.returncode}:\n{r.stderr}')
     out = r.stdout
     res = {}

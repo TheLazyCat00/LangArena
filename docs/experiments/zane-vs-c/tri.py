@@ -8,7 +8,7 @@ for r in range(rounds):
     order=bins[r%len(bins):]+bins[:r%len(bins)]
     for n,b in order:
         p=subprocess.run(['taskset','-c','2',b,ROOT+'/run.js'],text=True,capture_output=True,cwd=ROOT)
-        if 'Summary:' not in p.stdout: sys.exit(f'{b} exited with {p.returncode}:\n{p.stderr}')
+        if p.returncode not in (0, 1) or 'Summary:' not in p.stdout: sys.exit(f'{b} exited with {p.returncode}:\n{p.stderr}')
         out=p.stdout
         for k,s,v in LINE.findall(out): t[n].setdefault(k,[]).append(float(v) if s=='OK' else None)
         print(f'round {r} {n} done', flush=True)

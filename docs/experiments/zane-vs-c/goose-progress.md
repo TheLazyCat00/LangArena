@@ -106,3 +106,21 @@ Maze::Generator 1.8, Words 1.7, Interpreter 1.6, Sort::Merge 1.5.
   call); integers only (fixtures `listRanges`, `reject/rangeFloats`).
 - Left: the hash (one per lookup, three per miss, as Goose) and cache
   misses on the slot and the stored key, which Goose has too.
+
+### LogParser (2.4×): not attempted
+
+- Port uses PCRE2 JIT through the arena FFI, as C's entry does (72% in
+  JIT code). Goose has its own regex engine: literal-pair prefilters
+  (`gs_find_pair`, `gs_scan_pair_tables`) and a DFA (`regex_find_end`).
+  Closing it means a regex library for Zane: a library project, left.
+
+### SHA256: 0.78 → 0.75 s (Goose/clang 0.33, gcc 0.57); open
+
+- Port now as Goose's: `List<U8>` data, `Array<I32, 8>` hashes with
+  wrapping 32-bit arithmetic (CRC32 shares the list).
+- Goose/clang: unrolled by 8, `i % 8` folds to constants, the 8 hashes
+  live in two xmm registers (SLP). Ours: unrolled by 4, hashes stay in a
+  stack array, the index computed (`&0x1c`) and each lane a store→load.
+  `-unroll-count=8` and `-unroll-runtime-epilog=true` (ZANE_TRY_LLVM) do
+  not change it: the unrolled loop's start alignment is not known, so
+  the index does not fold. Needs the IR read; left open.

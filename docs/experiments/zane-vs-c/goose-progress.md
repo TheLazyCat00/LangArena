@@ -574,3 +574,19 @@ growable-span threshold. `ZANE_LIST_SPANS=16384` (from 131072): LZWDecode
 0.21 → 0.166; 32 KiB 0.174, 64 KiB 0.186. LZWEncode, HuffEncode,
 Json::Generate and Words move ±10% between reruns at every threshold,
 with no order. Builds from here use 16384.
+
+### LogParser: ~0.40 → ~0.34 s (Goose/clang 0.24–0.25)
+
+callgrind: the DFA (`findEnd`) costs as Goose's (2.06 G against 1.74 G
+instructions), and both make the same 5.94 M pair searches, but ours
+cost 450 instructions each against Goose's 263. Now as Goose's
+`gs_scan_pair`:
+- `rxTable` classifies each set after its tables (bytes 289–293): one to
+  three bytes, or three non-members complemented, or a run, or tables
+  (Goose's byte-set kinds); the runtime instantiates the block loop for
+  each pair of kinds and tests small sets with `pcmpeqb`.
+- The table test takes pshufb's zero for an index with its top bit set
+  (`lo[x]`, `hi[x ^ 0x80]`) instead of masking each half: 0.40 → 0.33.
+- The last partial block is one overlapping load, its searched
+  positions shifted out of the mask, not a byte loop: → ~0.34 (the
+  machine swings ±10% today).

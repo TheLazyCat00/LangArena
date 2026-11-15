@@ -1039,9 +1039,13 @@ Rx rx(pattern String, insensitive Bool) {
 // The byte set at position `at` (from 0) of `prefix`, as the runtime's
 // `findPair` reads one: 1 for each of the 256 bytes in it, then 16 bytes
 // where bit k of the j-th stands for the byte k*16+j, then 16 where it
-// stands for 128+k*16+j.
+// stands for 128+k*16+j; then, as Goose's byte sets, how a block test
+// reads it: its kind (1 to 3: that many bytes, 4: a range, 5: the
+// tables), whether the test is complemented, and the bytes (a range's
+// first and width).
 List<U8> rxTable(prefix List<Bool>, at Int) {
-  out List<U8> = filled(Int(288), U8.wrap(Int(0)));
+  out List<U8> = filled(Int(294), U8.wrap(Int(0)));
+  out[Int(289)]=U8.wrap(Int(5));
   if(prefix:size()<(at+1)*256) {
     return out;
   }
@@ -1057,6 +1061,52 @@ List<U8> rxTable(prefix List<Bool>, at Int) {
       }
       out[slot]=U8.wrap(bitOr(Int(out[slot]), bit));
     }
+  }
+  return rxKind(out);
+}
+
+// The block test's kind for set `out` (rxTable), as Goose's
+// gs_byteset_kind: up to three members, or up to three non-members
+// complemented, or one run of members.
+List<U8> rxKind(set List<U8>) {
+  out List<U8> = set;
+  members Int=Int(0);
+  lowest Int=Int(256);
+  highest Int=Int(0)-Int(1);
+  b Int=Int(0);
+  b!to(Int(255)) {
+    if(Int(out[b+1])==1) {
+      members=members+1;
+      lowest=min(lowest, b);
+      highest=max(highest, b);
+    }
+  }
+  if(members==0 or members==256) {
+    return out;
+  }
+  inSet Bool=members<=3;
+  outSet Bool=256-members<=3;
+  if(inSet or outSet) {
+    want Int=Int(1);
+    if(outSet and ~inSet) {
+      want=Int(0);
+      out[Int(290)]=U8.wrap(Int(1));
+    }
+    k Int=Int(0);
+    c Int=Int(0);
+    c!to(Int(255)) {
+      if(Int(out[c+1])==want) {
+        out[Int(291)+k]=U8.wrap(c);
+        k=k+1;
+      }
+    }
+    out[Int(289)]=U8.wrap(k);
+    return out;
+  }
+  if(highest-lowest+1==members) {
+    out[Int(289)]=U8.wrap(Int(4));
+    out[Int(291)]=U8.wrap(lowest);
+    out[Int(292)]=U8.wrap(highest-lowest);
   }
   return out;
 }

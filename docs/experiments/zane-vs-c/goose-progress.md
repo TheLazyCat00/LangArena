@@ -550,3 +550,17 @@ Zane / Goose-gcc 0.910 (faster on 29); `old` 1.055 / 0.903. No net gain:
   Template::Parse 1.50, Template::Regex 1.48, LZWEncode 1.43,
   ArithDecode 1.43, NeuralNet 1.38, TextRaytracer 1.37,
   Binarytrees::Arena 1.33.
+
+### TextRaytracer: 1.08 → 0.83 s (Goose/clang 0.79–0.93)
+
+- Scene as Goose's constant `SCENE`: a local `Array<Sphere,3>` literal
+  (was a `List` in the state): 1.08 → 1.05.
+- Lookup table as Goose's `const LUT: u8[6]`: an `Array<U8,6>` with
+  Goose's fallback to a space (was a `String` local, whose frame was
+  placed and torn down, 224 bytes zeroed, for every hit pixel): → 0.93.
+- `ZANE_CONST_ARRAYS=1` (new, `lib/codegen/const_arrays.ml`): an alloca
+  whose every write is a constant store at a constant offset (the same
+  bytes each time) and that is otherwise only loaded or copied from
+  becomes a private constant global, as clang makes Goose's `const`
+  arrays. The scene was rebuilt on the stack for every pixel, since the
+  hit sphere is read by an index LLVM does not know: → 0.83.

@@ -626,3 +626,16 @@ handle or an address.
 - 50/50 checks pass. No other benchmark has a local literal that
   qualifies (codec's `pattern` scope also holds a buffer; csvbench's
   `truth` is assigned).
+
+## Re-measure (step 26, `step26-goose.json`, `step26-goose.md`)
+
+Every switch so far plus `ZANE_LITERAL_LOCALS=1`, 3 interleaved rounds
+against Goose's clang and gcc builds.
+
+- Geomean Zane / Goose-clang 1.025 (step 25: 1.064), faster on 20 of 50;
+  Zane / Goose-gcc 0.865, faster on 32.
+- Worst left vs clang: HuffDecode 2.21, Binarytrees::Arena 1.51,
+  LogParser 1.50, ArithEncode 1.38, Graph::BFS 1.32, NeuralNet 1.29,
+  LZWEncode 1.23, Maze::Generator 1.22, GameOfLife 1.21.
+- Template::Regex and Template::Parse are ahead now, and
+  TextRaytracer/LZWDecode are within noise.

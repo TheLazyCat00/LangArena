@@ -372,3 +372,49 @@ rounds, minimum of each:
   Calculator::Ast 1.52, Template::Parse 1.48, NeuralNet 1.43,
   Spectralnorm 1.40, TextRaytracer 1.39, Binarytrees::Arena 1.38,
   Maze::Generator 1.34, Template::Regex 1.33, LZWDecode 1.30.
+
+### LogParser: 0.57 → 0.46 s, a regex library in Zane (Goose/clang 0.25–0.27)
+
+- The port used PCRE2's JIT through C. As the user allowed, it now has a
+  regex library of its own written in Zane (`zane/lib/arena/rx.zn`, tests
+  in `zane/test/rx`), on the model of Goose's `stdlib/regex.goose`:
+  parsed to a syntax tree, compiled back to front to a Thompson NFA, and
+  from it, by subset construction, a forward DFA with an unanchored
+  `.*?` ahead of the pattern (leftmost-first: a thread's list stops at
+  the first match) and a reverse DFA for where a match starts; byte
+  classes; states renumbered dead, match states, then the start state, so
+  one compare finds every state the loop must look at. Where the forward
+  DFA is back in its start state, a skip: the prefix test (the two
+  offsets whose byte sets are rarest by a rough frequency, as Goose's
+  `choose_filter`) or the inner byte (a rare byte every match holds after
+  a part that never consumes it, walked back from by the part's reverse
+  DFA), chosen as Goose chooses.
+- The scans are runtime intrinsics, Goose's `gs_scan_pair` and
+  `gs_scan_any`: `String:findPair` and `String:findAny` (compiler
+  `Text_find_pair`, `Text_find_any`, runtime/block.c), 16 positions at a
+  time by SSSE3 shuffles over two 16-byte tables per set, exact for every
+  set, a set's tables prepared once on the Zane side.
+- Scalar skip loop: 1.21 s; with `findPair`: 0.67 s; with the inner byte
+  as well: 0.46 s (PCRE2: 0.62 s).
+- The patterns are the ones PCRE2 had; checksums are unchanged.
+  (Note: `guard(c)` leaves when `c` holds.)
+
+### Template::Regex, Template::Parse: Goose's data layout
+
+- Template::Regex on the new library is slower than with PCRE2 (2.3–2.5
+  against 2.0–2.2 s): PCRE2 finds `{{` by memchr, and our reverse DFA
+  walks back from each `}}` to where a match can start. The pattern is
+  now Goose's, `[{][{](.*?)[}][}]`, whose `.` stops the walk at a newline.
+- Both spent about 40–50% in `StringMap.slot` and much of the rest in
+  per-byte FFI calls to the C `Buffer`. As in Goose's port, the text is now
+  a `List<U8>`, the keys ranges of one byte list in a `BytesMap`, the
+  values ranges of another, and a key is looked up by the text's own bytes
+  (no `slice`/`trim` string per placeholder); runs of plain text are
+  copied with `appendRange`. Template::Parse 1.47 → 1.44 s (Goose 0.95–
+  1.13): the time is now in `BytesMap.slotIn`, about 90 ns a lookup, a
+  cache miss into a 6 MB table, as Goose's 10 MB one also has.
+- `BytesMap.slotIn` tested `length == count and sameRange(...)`: Zane's
+  `and` evaluates both sides, so every probed slot compared bytes. Now
+  nested.
+- `StringMap` hashes with the runtime's word-at-a-time hash (`hashBytes`,
+  the one `hashRange` uses) instead of djb2 per byte.

@@ -719,3 +719,16 @@ The machine swings ±25% between batches today, so these are medians of
   9 more: Base64::Decode 0.149 vs 0.150, CacheSimulation 1.104 vs 1.107,
   Json::Generate 0.240 vs 0.245 (all the same); Graph::AStar 1.140 vs
   1.228 by median with the same minimum (1.123 vs 1.120). On from here.
+
+## Re-measure (step 27, `step27-goose.json`, `step27-goose.md`)
+
+Step 26's switches plus `ZANE_BIASED_BASE=1` and `ZANE_UNROLL_SMALL=8`,
+HuffDecode's 16-byte node and whole-byte loop; 3 interleaved rounds.
+
+- Geomean Zane / Goose-clang 0.982 (step 26: 1.025): Zane is now ahead
+  of Goose's clang build overall, faster on 23 of 50. Zane / Goose-gcc
+  0.854, faster on 28.
+- HuffDecode is off the top of the list.
+- Worst left vs clang: LogParser 1.50, Maze::Generator 1.39,
+  Binarytrees::Arena 1.38, ArithEncode 1.38, LZWEncode 1.38, LZWDecode
+  1.30, Binarytrees::Obj 1.29.

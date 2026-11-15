@@ -462,3 +462,24 @@ Everything through `ZANE_IDLE_SEARCH`, against the step-23 binary (`old`):
 - Worst left: HuffDecode 2.28, Binarytrees::Arena 1.66, LogParser 1.63,
   Template::Parse 1.50, Maze::Generator 1.49, Template::Regex 1.43,
   ArithEncode 1.38, GameOfLife 1.37, LZWEncode 1.35, CSV::Parse 1.32.
+
+## Spectralnorm, NeuralNet, recursion peeling (after step 24)
+
+- Spectralnorm: `element` now computes `Float(i+j)` once, as Goose's
+  `eval_a` does: 1.44 → 1.11 s (Goose 1.07).
+- NeuralNet: neurons now hold their synapses as Goose's do, in inline
+  `Array<I32,10>` arrays named by 32-bit indices. Measured neutral (1.39
+  against 1.33 with the old lists, inside the noise), kept since it is
+  Goose's layout. The gap to Goose (≈1.36 vs 0.97 s) is in instructions,
+  not latency: callgrind counts 25.4 G against 18.5 G. Both spend the same
+  4.76 G in libm `exp` (the same 89.76 M calls, 4.9 ns each in either
+  process, the same MXCSR). The rest is the hop through each
+  synapse: Goose's `Neuron&<u32>` is an unchecked self-relative offset
+  (`movslq; add`), ours a checked 1-based index (`movslq; dec; cmp; jae;
+  shl`). Two hops per synapse visit, ~90 visits per `train`, account for
+  about two thirds of the 6.9 G gap. That price is the checked index
+  itself; left.
+- `ZANE_PEEL_RECURSION=1` (new, `lib/optimize/recursion_peel.ml`): gives
+  each small self-recursive function an always-inlined copy `f$peel` that
+  its self-calls go to, so one level of recursion is inlined. Not useful:
+  Binarytrees::Arena 0.584 → 0.608, Sort::Quick 1.636 → 1.736. Off.

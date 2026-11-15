@@ -195,9 +195,31 @@ List<U8> decode(encoded Encoded) {
   data String=encoded.data;
   // As in C, each byte is read once and its bits taken from the top.
   remaining Int=encoded.bits;
+  // Every whole byte's 8 bits in a loop of a constant count, as Goose's
+  // `for j in 8`; the last byte's bits after.
+  whole Int=min(data:byteCount(), remaining/8);
   i Int=Int(1);
-  i!to(data:byteCount()) {
+  i!to(whole) {
     value Int=Int(data:byteAt(i));
+    b Int=Int(1);
+    b!to(Int(8)) {
+      bit Int=bitAnd(shiftRightLogical(value, Int(8)-b), Int(1));
+      branch Bool=if(bit==0) {
+        current=Int(tree.nodes[current].left);
+      }
+      branch:else() {
+        current=Int(tree.nodes[current].right);
+      }
+      reached Node=tree.nodes[current];
+      if(reached.leaf) {
+        out!push(reached.value);
+        current=tree.root;
+      }
+    }
+  }
+  remaining=remaining-whole*8;
+  if(remaining>0 and whole<data:byteCount()) {
+    value Int=Int(data:byteAt(whole+1));
     b Int=Int(1);
     b!to(min(Int(8), remaining)) {
       bit Int=bitAnd(shiftRightLogical(value, Int(8)-b), Int(1));
@@ -213,7 +235,6 @@ List<U8> decode(encoded Encoded) {
         current=tree.root;
       }
     }
-    remaining=remaining-8;
   }
   return out;
 }

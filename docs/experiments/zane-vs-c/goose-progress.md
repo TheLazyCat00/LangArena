@@ -700,3 +700,16 @@ The machine swings ±25% between batches today, so these are medians of
   `incb -0x1(%r12,%r9,1)`), an indirect-jump dispatch whose time moves
   with code placement, so that is layout, not the bias.
 - On from here (builds use `ZANE_BIASED_BASE=1`).
+
+### HuffDecode: 1.50 → 0.81 s (Goose/clang 0.74, medians of 9)
+
+- Every whole byte's bits in a `b!to(Int(8))` loop, the last byte's
+  after, as Goose's `for j in 8`: 1.229 → 1.179 alone, since LLVM keeps
+  the loop (a body with the leaf branch is over its unroll threshold).
+- `-unroll-threshold=1000` for the whole build: 1.188 → 0.845. So the
+  compiler now asks for it where Goose's does: `ZANE_UNROLL_SMALL=8`
+  (compiler `lib/codegen/emit.ml`, the `to` loop) puts
+  `llvm.loop.unroll.full` on a loop whose count is a constant from 2 to
+  8, as C's `#pragma unroll`: 0.807 (Goose 0.737). 50/50 checks pass.
+- With `ZANE_BIASED_BASE` and the 16-byte node, step 26's 1.497 is now
+  0.807: 2.2× → 1.1×.

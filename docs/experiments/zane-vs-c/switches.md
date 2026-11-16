@@ -14,7 +14,7 @@ ZANE_FRAME_SHADOW=1 ZANE_MERGE_CHECKS=1 ZANE_ENDLESS=1 ZANE_SIZED_TBAA=1
 ZANE_FRAME_SCOPES=1 ZANE_ARM_CHECKS=1 ZANE_STRIP=1 ZANE_RANGE_CHECKS=1
 ZANE_REHOME=1 ZANE_LIST_SPANS=16384 ZANE_IDLE_SEARCH=1 ZANE_DIV_CACHE=1
 ZANE_CONST_ARRAYS=1 ZANE_LITERAL_LOCALS=1 ZANE_BIASED_BASE=1 ZANE_UNROLL_SMALL=8
-ZANE_LOOP_INLINE=128 ZANE_LEAF_PEEL=1
+ZANE_LOOP_INLINE=128 ZANE_LEAF_PEEL=1 ZANE_SHADOW_REFILL=1
 ```
 
 `ZANE_LOOP_INLINE=128` is from after step 27: a call in a loop to a small
@@ -22,6 +22,9 @@ loop-free leaf of the program, judged after LLVM's passes, inlined
 (Maze::Generator's `adjacentOpen`, CacheSimulation's `front`).
 `ZANE_LEAF_PEEL=1` too: a recursion's base case made at each self-call
 with no call, as Goose's compiler emits Binarytrees' `build`.
+`ZANE_SHADOW_REFILL=1` after step 28: frame shadow fills again after a
+`memset`/`memcpy` of a constant length, or a list growth call, only the
+slots it may write, not every slot (Brainfuck::Array 1.89 → 1.70 s).
 
 The last three are from step 27's round:
 
@@ -43,6 +46,8 @@ The last three are from step 27's round:
 | Switch | Result |
 | --- | --- |
 | `ZANE_PEEL_RECURSION` | Superseded by `ZANE_LEAF_PEEL` after step 28 (it inlines a whole level; Sort::Quick 1.80 → 1.93). Step 24: Binarytrees::Arena 0.584 → 0.608, Sort::Quick slower. After step 26: geomean 0.998 over all 50 (3 rounds), the extremes all within noise on re-runs, Arena included. |
+| `ZANE_DIV_HOIST` | After step 28: a loop-invariant divisor's multiplier looked up once in the loop's preheader. ArithEncode the same; Brainfuck::Array +16%, Json::Generate +14%, CSV::Parse +6% (the LICM/unswitch run it adds over every function). |
+| `ZANE_LOOP_INLINE_LOOPS=128` | After step 28: `ZANE_LOOP_INLINE` also takes callees with a loop or a runtime push. ArithEncode −4%, NGram −7%, Binarytrees::Obj −8%, Maze::AStar +7%. |
 | `ZANE_LOOP_RANGES` | Slower: the range test cost more than the checks it removed (compiler `docs/experiments/goose-comparison`). |
 | `ZANE_BUMP_REGIONS` | No gain: the frontier's load and store were the chain, not the free list (goose-comparison). |
 | `ZANE_ELEM_TBAA` | After step 27: list elements' scalars tagged and scoped by the list's stride. Tags right, changes nothing measurable (all 50, 3 rounds: geomean 1.008). |

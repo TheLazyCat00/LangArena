@@ -76,7 +76,9 @@ List<List<Int>> blocks(text String) {
   active Bool=Bool(true);
   i Int=Int(1);
   i!to(length(text)) {
-    if(active and i<=length(text)) {
+    // A copy: `if` borrows its condition, and its block writes `active`.
+    reading Bool=active;
+    if(reading) {
       c Int=byte(text, i);
       if(c==43 or c==45 or c==62 or c==60 or c==46) {
         program[current]!push(c);

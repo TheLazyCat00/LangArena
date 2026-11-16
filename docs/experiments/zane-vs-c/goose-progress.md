@@ -847,3 +847,41 @@ level with Goose and Obj ahead.
 - It takes both binarytrees `build`s, `sort$merge` and brainfuck's `Op`
   copy/end/move layouts. Sort::Merge 1.48 → 1.51 and Brainfuck::Recursion
   2.12 → 2.13 (the same). 50/50 checks pass.
+
+### Compress::ArithEncode: emit, the frame's refills, the divisor
+
+Medians of 7: the step-28 build plus `ZANE_LEAF_PEEL` 1.60 s, Goose/clang
+1.18 s (1.36×). Callgrind: 13.2 G instructions against Goose's 5.5 G, 72%
+in `encode` and 24% in `emit`, which stays a call: it has a loop (the
+pending bits) and calls the runtime's push, so `ZANE_LOOP_INLINE` leaves
+it. Each call of it made `encode` load the table's lists and total, the
+input and its bounds from the frame again (the frame's address escapes,
+so a call may write any slot).
+
+- `ZANE_LOOP_INLINE_LOOPS=M` (new): a callee with a loop of its own, of
+  at most M instructions, is taken too, and with it a callee may call
+  `zane_list_push`/`zane_list_reserve`. At 128: ArithEncode 1.60 → 1.47–1.51.
+  It also takes NGram's `add`, Maze/Graph `push`, Mandelbrot's
+  `inside.lookup`, regex `scanBack`, NeuralNet's `connect`.
+- The reloads stayed, now once per byte written: `ZANE_FRAME_SHADOW`
+  fills every shadowed slot again after any call given a frame address,
+  and two such follow each byte: the `memset` instcombine makes of
+  `pendingByte=0; bitPosition=0` and the push's growth path.
+  `ZANE_SHADOW_REFILL=1` (new, `frame_shadow.ml`): after a constant-length
+  `memset`/`memcpy`/`memmove` only the slots its destination covers are
+  filled again, after a list growth call only its header's, whether or
+  not the frame's address went elsewhere (the growth writes through no
+  address it was given before).
+- With the slots in registers `total` is loop-invariant, but the division
+  still went through `ZANE_DIV_CACHE`'s per-division cache (compare with
+  the last divisor, check the shift). `ZANE_DIV_HOIST=1` (new,
+  `div_cache_stubs.cpp`): a divisor the outermost loop around it does not
+  change gets its multiplier and shift once, in that loop's preheader
+  (made when the passes left none), as Goose's compiler emits
+  `gs_divu_gen` before the loop.
+- All three: 1.52 s, 10.2 G instructions; Goose 1.18. Branch simulation
+  has about the same mispredicts (217 M vs Goose's 203 M, the normalize
+  loop's three tests); Goose peels its first pass. What is left per
+  symbol: our division is signed (an absolute value and a sign fix each,
+  Goose's is unsigned), the normalize loop's bound of 64, three index
+  checks, spilled values, and the slot stores frame shadow keeps.

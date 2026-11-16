@@ -820,3 +820,30 @@ too (Binarytrees::Arena 0.395 → 0.330, Maze::Generator 0.435 → 0.431).
   1.37, SHA256 1.30, Binarytrees::Obj 1.28, Brainfuck::Array 1.27,
   Fannkuchredux 1.22, NeuralNet 1.21, Graph::BFS 1.17.
 - Maze::Generator is down to 1.09, LZWEncode 1.13.
+
+### `ZANE_LEAF_PEEL`: Binarytrees::Arena 0.549 → 0.348 s, Obj 0.389 → 0.265 s
+
+Medians of 7; Goose/clang 0.346 and 0.283 in the same runs, so Arena is
+level with Goose and Obj ahead.
+
+- Arena was 1.46× by medians: callgrind (3 iterations) had our `build`
+  at 267 M instructions and 15.7 M branches against Goose's 186 M and
+  9.4 M; same page faults (6.3 k) and memory (27 MB), all user time.
+- Goose's compiler emits each self-call of `build_tree` as `if (depth - 1
+  > 0) call; else <the leaf node written in place>`: the base case is made
+  at the call, so the leaves (half of all nodes) take no call.
+  `ZANE_PEEL_RECURSION` instead inlines a whole level of the body at each
+  self-call (more code and spills): Arena 0.584 → 0.554, Obj 0.408 →
+  0.343, but Sort::Quick 1.80 → 1.93.
+- `ZANE_LEAF_PEEL=1` (new, compiler `lib/codegen/leaf_peel_stubs.cpp`):
+  after LLVM's passes, a self-recursive function of the program (at most
+  200 instructions) with a conditional branch on a compare of its
+  arguments and constants, one side of which leaves no self-call
+  reachable from the entry, is cloned as `F$leaf` with that branch fixed;
+  each self-call then goes to `F$peel`, which makes the compare on the
+  call's arguments and calls `F` or `F$leaf`. Both are always inlined and
+  folded by the passes run again. Since arguments do not change, the
+  compare at the call is the one `F` would make.
+- It takes both binarytrees `build`s, `sort$merge` and brainfuck's `Op`
+  copy/end/move layouts. Sort::Merge 1.48 → 1.51 and Brainfuck::Recursion
+  2.12 → 2.13 (the same). 50/50 checks pass.

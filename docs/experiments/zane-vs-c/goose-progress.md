@@ -885,3 +885,42 @@ so a call may write any slot).
   symbol: our division is signed (an absolute value and a sign fix each,
   Goose's is unsigned), the normalize loop's bound of 64, three index
   checks, spilled values, and the slot stores frame shadow keeps.
+
+### Etc::LogParser: the byte sets' block-test kind was read one byte off
+
+Sampled (step-28 build + `ZANE_SHADOW_REFILL`): 4.28 s whole run against
+Goose's 3.08; `zane_pair_blocks` 1.79 s against Goose's `gs_find_pair` +
+`gs_scan_pair_tables` 1.24 s, our `findEnd` 1.40 s against Goose's
+1.56 s. Callgrind: the same 5.9 M pair scans and 2.4 M `findEnd`s, but
+every one of ours went through the two-table test, where Goose's takes
+the compare tests for 2.6 M of them. `rx.zn`'s `rxTable`/`rxKind` wrote
+the set's kind, complement flag and bytes at its (1-based) 289, 290 and
+291–293, which are bytes 288–292; the runtime reads them at 289–293
+(`zane_set_kind`, `zane_bsm_init`). So it took the complement flag (0)
+for the kind, and kind 0 falls to the default, the tables. Port fixed
+(the indices one up). A complemented set would have read its first byte
+as the flag; none of LogParser's or CSV's are, and 50/50 checks passed
+before and after.
+
+Medians of 7: LogParser 0.386 → 0.309 s (Goose 0.258, 1.20×),
+Template::Regex 1.51 → 1.42 (Goose 1.49), CSV::Parse 0.639 → 0.613
+(Goose 0.544).
+
+### After the ArithEncode switches, all 50 (3 rounds, medians)
+
+Against the step-28 build plus `ZANE_LEAF_PEEL`:
+
+- `ZANE_SHADOW_REFILL` + `ZANE_DIV_HOIST`: geomean 1.005. Separately,
+  medians of 7: `ZANE_SHADOW_REFILL` alone Brainfuck::Array 1.89 →
+  1.70, the rest the same; `ZANE_DIV_HOIST` alone Brainfuck::Array 1.89
+  → 2.20, Json::Generate 0.245 → 0.280, CSV::Parse +6%. Making the
+  hoisted multiplier through the cache's protocol in the preheader (a
+  compare per entry to the loop, the multiplier only on a divisor's
+  second entry) left Json::Generate at 0.278, so the cost is the extra
+  LICM/unswitch run over every function, not the multiplier; ArithEncode
+  gains nothing from it. `ZANE_DIV_HOIST` stays off,
+  `ZANE_SHADOW_REFILL` goes on.
+- `ZANE_LOOP_INLINE_LOOPS=128` on top: ArithEncode −4%, NGram −7%,
+  Binarytrees::Obj −8%, but Maze::AStar +7% (the heap's sift-up loop
+  inlined into `step`) and CSV::Parse noisy. Off: a budget that takes
+  `emit` but not the heap's push would be fitted to the benchmark.

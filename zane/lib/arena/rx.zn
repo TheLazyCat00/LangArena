@@ -1042,10 +1042,12 @@ Rx rx(pattern String, insensitive Bool) {
 // stands for 128+k*16+j; then, as Goose's byte sets, how a block test
 // reads it: its kind (1 to 3: that many bytes, 4: a range, 5: the
 // tables), whether the test is complemented, and the bytes (a range's
-// first and width).
+// first and width), at bytes 289, 290 and 291 to 293 from 0 (the
+// runtime's zane_set_kind and zane_bsm_init), which are 290, 291 and 292
+// to 294 here.
 List<U8> rxTable(prefix List<Bool>, at Int) {
   out List<U8> = filled(Int(294), U8.wrap(Int(0)));
-  out[Int(289)]=U8.wrap(Int(5));
+  out[Int(290)]=U8.wrap(Int(5));
   if(prefix:size()<(at+1)*256) {
     return out;
   }
@@ -1090,23 +1092,23 @@ List<U8> rxKind(set List<U8>) {
     want Int=Int(1);
     if(outSet and ~inSet) {
       want=Int(0);
-      out[Int(290)]=U8.wrap(Int(1));
+      out[Int(291)]=U8.wrap(Int(1));
     }
     k Int=Int(0);
     c Int=Int(0);
     c!to(Int(255)) {
       if(Int(out[c+1])==want) {
-        out[Int(291)+k]=U8.wrap(c);
+        out[Int(292)+k]=U8.wrap(c);
         k=k+1;
       }
     }
-    out[Int(289)]=U8.wrap(k);
+    out[Int(290)]=U8.wrap(k);
     return out;
   }
   if(highest-lowest+1==members) {
-    out[Int(289)]=U8.wrap(Int(4));
-    out[Int(291)]=U8.wrap(lowest);
-    out[Int(292)]=U8.wrap(highest-lowest);
+    out[Int(290)]=U8.wrap(Int(4));
+    out[Int(292)]=U8.wrap(lowest);
+    out[Int(293)]=U8.wrap(highest-lowest);
   }
   return out;
 }

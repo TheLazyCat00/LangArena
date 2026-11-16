@@ -781,3 +781,42 @@ Session of 2026-11-15. Medians of 7–9 interleaved runs from here on
   (`lea (r,r,2)`, then the load) against Goose's self-relative 32-bit
   pointer (`movslq; movzbl (r,off)`), and a reset loop that branches per
   cell where Goose's is vectorized.
+
+### LZWEncode: 0.835 → 0.753 s (Goose/clang 0.643, medians of 7)
+
+- The encoder's `BytesMap` was sized for the worst case up front
+  (min(2n + 1024, 131072) slots: 1.5 MB, zeroed every call) for the
+  ~2.7 k keys one call holds (the test data repeats, so strings get long
+  and few codes are made), so each probe missed the cache. Goose's
+  dictionary reserves 4096 keys and doubles at 2/3 load. The port's
+  `BytesMap` now grows the same way (`grow`, entries placed again) and LZW
+  reserves 4096 keys: 0.835 → 0.755. Template and LogParser, its other
+  users, are unchanged.
+- The byte-range hash (runtime `zane_bytes_hash`) mixed each word with an
+  xorshift (`mov; shr; xor`); Goose's rotates (`rol`). With the rotate
+  written as shifts, clang made it a second multiply by the constant
+  shifted, so it is `__builtin_rotateleft64` now, and the close is
+  Goose's two multiply-xorshift rounds: the hash's instructions 65.6 M →
+  50.0 M (3 iterations; Goose's 48.5 M); time 0.772 → 0.753, within the
+  noise (the four lanes' multiply chains were the bound already).
+- A port of Goose's whole hash (two lanes past 24 bytes, its short path
+  out of line) was more instructions here (72 M, the wrapper no longer
+  inlined): reverted.
+- Left (1.13–1.17×): both spend about the same in the key compare (the
+  first load of the stored key is a miss, ours glibc's AVX-512 `memcmp`,
+  Goose's `gs_memeq_long`); our hash is about a third more samples than
+  Goose's for the same instruction count.
+
+## Re-measure (step 28, `step28-goose.json`, `step28-goose.md`)
+
+Step 27's switches plus `ZANE_LOOP_INLINE=128`, the growing `BytesMap`
+and the rotating hash; 3 interleaved rounds, minimums. A new container
+(2026-11-15/16), so not the machine of step 27: Goose's own times moved
+too (Binarytrees::Arena 0.395 → 0.330, Maze::Generator 0.435 → 0.431).
+
+- Geomean Zane / Goose-clang 1.006 (faster on 20 of 50), Zane /
+  Goose-gcc 0.856 (faster on 29).
+- Worst vs clang: Binarytrees::Arena 1.80, LogParser 1.48, ArithEncode
+  1.37, SHA256 1.30, Binarytrees::Obj 1.28, Brainfuck::Array 1.27,
+  Fannkuchredux 1.22, NeuralNet 1.21, Graph::BFS 1.17.
+- Maze::Generator is down to 1.09, LZWEncode 1.13.

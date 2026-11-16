@@ -1008,3 +1008,14 @@ worker reading the whole transpose. Port changed to Goose's split
 with `appendRange`). Medians: T16 5.43 → 5.13 s (Goose 5.11), T8 5.50 →
 5.23 (4.92), T4 5.51 → 5.66 (5.08; minimums 5.37 → 5.30, noise), Single
 the same. 50/50 checks pass.
+
+### Etc::Sieve: the byte list as Goose's `u8[>..]`
+
+Medians of 7: 2.82 s against Goose/clang 2.50 (1.13×). The marking loop
+was 9 instructions to Goose's 6: two checks, and the buffer's length and
+block loaded again each time round. The port's sieve was an `arena`
+`Buffer`, whose `set` is the port's C (`arena_buffer_set`, inlined from
+bitcode): a C byte store, which may alias anything, so LLVM reloads the
+buffer's handle after it. Goose's is a `u8[>..]`; the port now uses a
+`List<U8>` (`List(limit + 1, 1)`), whose element stores carry the
+compiler's byte tag. 2.82 → 2.56 s (Goose 2.50). 50/50 checks pass.

@@ -938,3 +938,20 @@ as step 28.
   ArithDecode 1.18, NeuralNet 1.16, CSV::Parse 1.16.
 - Binarytrees::Arena and Obj are no longer among them (LEAF_PEEL), nor
   Brainfuck::Array (SHADOW_REFILL).
+
+### Hash::SHA256: half of the eight hashes vectorized
+
+0.519 s against Goose/clang's 0.402 (step 29). Same algorithm: eight
+32-bit hashes in an array indexed by `i % 8`. Both binaries' loops are
+unrolled by 8, but Goose's keeps the eight in two SSE vectors (24
+instructions per 8 bytes) and ours one vector and four scalars (45).
+Goose's compiler strip-mines the loop itself (`/* loop shape:
+strip-mined by 8 */` in its C: an inner `for t37 < 8` indexing the
+array by `t37`), clang unrolls that inner loop whole and the SLP
+vectorizer finds two groups of four stores in its body (`Stores SLP
+vectorized with cost -8/-9`). Ours reaches the same shape only by LLVM's
+runtime unroll by 8, late, after which SROA has made the array eight
+scalars: the only stores left are the eight after the loop, and SLP
+groups lanes 1–4 of them, leaving 0 and 5–7 scalar. `-slp-threshold=-6`
+changes nothing. Open: a strip-mined loop shape in the compiler for an
+array indexed by the loop counter modulo a small constant.

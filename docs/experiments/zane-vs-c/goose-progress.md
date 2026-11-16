@@ -995,3 +995,16 @@ to the frame each time round `normalize`.
   Doing it for those would take a write-back before each access that
   may alias a slot, which needs alias information this pass has not.
   Dropped, not committed.
+
+### Matmul::T4/T8/T16: workers by columns, as Goose's
+
+Step 29: T16 1.13×, T8 1.09×, T4 1.07×, Single 0.99×. The runs are
+pinned to one CPU, and on it Goose's T16 (4.77 s) beats its own Single
+(5.32): its workers each take a block of columns (`width` = n / threads)
+for every row, so a worker reads only its rows of the transpose, a tile
+that stays in cache across the 900 rows. The port split by rows, each
+worker reading the whole transpose. Port changed to Goose's split
+(`multiplyColumns`; the result's rows joined from the workers' blocks
+with `appendRange`). Medians: T16 5.43 → 5.13 s (Goose 5.11), T8 5.50 →
+5.23 (4.92), T4 5.51 → 5.66 (5.08; minimums 5.37 → 5.30, noise), Single
+the same. 50/50 checks pass.

@@ -63,67 +63,64 @@ Unit arrayCommand(this Tape, op Int) mut {
   return Unit();
 }
 
-type Op = #variant {
-  command Int;
-  loop ListRef<Op>;
-}
-
-type Parser = #struct {
-  text String;
-  position Int;
-}
-
-Parser(text String) => init {
-  text;
-  position=Int(1);
-}
-
-^ListRef<Op> parse(this Parser) mut {
-  ops ^ListRef<Op> = ListRef(Op);
+// runRecursive's program, as C's tree of op arrays with indices for its
+// pointers: block 1 is the program, and each loop's body is a block of its
+// own. In a block, a command is its byte and a loop is its body's block,
+// negated.
+List<List<Int>> blocks(text String) {
+  program List<List<Int>> = List(List<Int>);
+  program!push(List(Int));
+  // The blocks the loops being read were opened in, innermost last.
+  open List<Int> = List(Int);
+  current Int=Int(1);
   active Bool=Bool(true);
   i Int=Int(1);
-  i!to(length(this.text)) {
-    if(active and this.position<=length(this.text)) {
-      c Int=byte(this.text, this.position);
-      this.position=this.position+1;
-      closed Bool=if(c==93) {
-        active=Bool(false);
+  i!to(length(text)) {
+    if(active and i<=length(text)) {
+      c Int=byte(text, i);
+      if(c==43 or c==45 or c==62 or c==60 or c==46) {
+        program[current]!push(c);
       }
-      closed:else() {
-        branch Bool=if(c==91) {
-          ops!push(Op.loop(this!parse()));
+      if(c==91) {
+        body Int=program:size()+1;
+        program!push(List(Int));
+        program[current]!push(~body);
+        open!push(current);
+        current=body;
+      }
+      if(c==93) {
+        // As C: a `]` with no loop open ends the program.
+        closed Bool=if(open:size()==0) {
+          active=Bool(false);
         }
-        branch:else() {
-          if(c==43 or c==45 or c==62 or c==60 or c==46) {
-            ops!push(Op.command(c));
-          }
+        closed:else() {
+          current=open!remove(open:size());
         }
       }
     }
   }
-  return ops;
+  return program;
 }
 
-Unit runOps(this Tape, ops ListRef<Op>) mut {
-  i Int=Int(1);
-  i!to(ops:size()) {
-    ignored Unit=match(ops[i]) {
-      c command => this!command(c);
-      nested loop => this!runLoop(nested);
-    }
-  }
-  return Unit();
+// runRecursive's machine: the tape, the program, the op it is at, and the
+// ops to go back to when each loop it is in ends, as an explicit stack in
+// place of C's recursion.
+type TreeMachine = #struct {
+  tape Tape;
+  program List<List<Int>>;
+  block Int;
+  index Int;
+  returnBlocks List<Int>;
+  returnIndices List<Int>;
 }
 
-Unit runLoop(this Tape, ops ListRef<Op>) mut {
-  i Int=Int(1);
-  i!to(Int(9223372036854775807)) {
-    if(this.bytes[this.position]==U8(0)) {
-      return Unit();
-    }
-    this!runOps(ops);
-  }
-  return Unit();
+TreeMachine(program List<List<Int>>) => init {
+  tape=Tape();
+  program;
+  block=Int(1);
+  index=Int(1);
+  returnBlocks=List(Int);
+  returnIndices=List(Int);
 }
 
 // runArray's machine: the tape, the commands, their jumps and the counter.
@@ -199,11 +196,45 @@ Int runArray(source String) {
 }
 
 Int runRecursive(source String) {
-  parser Parser=Parser(source);
-  ops ListRef<Op> = parser!parse();
-  tape Tape=Tape();
-  tape!runOps(ops);
-  return tape.result;
+  machine TreeMachine=TreeMachine(blocks(source));
+  // Each step runs one op, or ends a pass through a loop's body: the body
+  // runs again while the current cell is not zero, as C's loop does, and
+  // the machine goes back to the op after the loop when it is.
+  machine!work(Bool(this TreeMachine) mut {
+    going Bool=Bool(true);
+    ended Bool=if(this.index>this.program[this.block]:size()) {
+      outermost Bool=if(this.block==1) {
+        going=Bool(false);
+      }
+      outermost:else() {
+        again Bool=if(this.tape.bytes[this.tape.position]~=U8(0)) {
+          this.index=Int(1);
+        }
+        again:else() {
+          this.block=this.returnBlocks!remove(this.returnBlocks:size());
+          this.index=this.returnIndices!remove(this.returnIndices:size());
+        }
+      }
+    }
+    ended:else() {
+      op Int=this.program[this.block][this.index];
+      this.index=this.index+1;
+      loop Bool=if(op<0) {
+        // A loop whose cell is zero is not entered.
+        if(this.tape.bytes[this.tape.position]~=U8(0)) {
+          this.returnBlocks!push(this.block);
+          this.returnIndices!push(this.index);
+          this.block=~op;
+          this.index=Int(1);
+        }
+      }
+      loop:else() {
+        this.tape!command(op);
+      }
+    }
+    return going;
+  });
+  return machine.tape.result;
 }
 
 type State = #struct {

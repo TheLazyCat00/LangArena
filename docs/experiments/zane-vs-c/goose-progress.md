@@ -1025,3 +1025,30 @@ The same for ArithDecode's output: a `Buffer` pushed one byte per symbol
 as Goose's `u8[>..]`: 1.316 → 1.280 s (Goose 1.124). The C runtime's
 own tags could not help: C's TBAA and the compiler's have different
 roots, which LLVM never tells apart.
+
+### Etc::NeuralNet: the synapse checks
+
+Medians of 7: 1.240 s against Goose/clang 1.081 (1.15×). Under callgrind
+(60 iterations) the port runs 822 M instructions to Goose's 659 M, the
+same 177 M in `exp` for both; `feed` 193 M to 169 M, `update` and `train`
+443 M to 301 M. A synapse update is about 25 instructions to Goose's 15:
+Goose names a synapse's neurons by unchecked 32-bit relative references,
+and the port checks three indices for each: `j` against the neuron's
+`Array<I32, 10>`, the synapse index against the list of synapses, and the
+source against the list of neurons. The last two are indices loaded from
+memory, which no pass can prove in range.
+
+The first is a loop counter against a constant bound, which LLVM's
+inductive range check elimination (IRCE, already in the pipeline) splits
+off. It did not, because instruction combining had folded `j - 1 >=u 10`,
+taken to the stop, into `j - 11 <u -10`, a form IRCE does not read.
+`ZANE_INSIDE_FIRST=1` makes the check `j - 1 <u count`, taken to the
+element. IRCE then reads it as `j <u 11` and, with
+`-irce-skip-profitability-checks`, splits six of the port's loops. It is
+worse all the same: 905 M instructions, 897 M with the split, against
+822 M. The folded form gave `feed`'s loop a maximum trip count of 10,
+which unrolled it in full, and the split's checked loops before and after
+cost more than the check they save. Off.
+
+NeuralNet stays at about 1.15×: the cost of the two checks of loaded
+indices, which Goose's references do not make.

@@ -47,6 +47,7 @@ The last three are from step 27's round:
 | --- | --- |
 | `ZANE_PEEL_RECURSION` | Superseded by `ZANE_LEAF_PEEL` after step 28 (it inlines a whole level; Sort::Quick 1.80 → 1.93). Step 24: Binarytrees::Arena 0.584 → 0.608, Sort::Quick slower. After step 26: geomean 0.998 over all 50 (3 rounds), the extremes all within noise on re-runs, Arena included. |
 | `ZANE_DIV_HOIST` | After step 28: a loop-invariant divisor's multiplier looked up once in the loop's preheader. ArithEncode the same; Brainfuck::Array +16%, Json::Generate +14%, CSV::Parse +6% (the LICM/unswitch run it adds over every function). |
+| `ZANE_INSIDE_FIRST` | After step 29: an index check made as `offset <u count` taken to the element, so IRCE reads a counter's check against an `Array<T, n>`. NeuralNet 822 M → 905 M instructions (`feed`'s loop no longer unrolled in full by the folded check's trip count). |
 | `ZANE_LOOP_INLINE_LOOPS=128` | After step 28: `ZANE_LOOP_INLINE` also takes callees with a loop or a runtime push. ArithEncode −4%, NGram −7%, Binarytrees::Obj −8%, Maze::AStar +7%. |
 | `ZANE_LOOP_RANGES` | Slower: the range test cost more than the checks it removed (compiler `docs/experiments/goose-comparison`). |
 | `ZANE_BUMP_REGIONS` | No gain: the frontier's load and store were the chain, not the free list (goose-comparison). |

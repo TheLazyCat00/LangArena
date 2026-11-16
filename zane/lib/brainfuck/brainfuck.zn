@@ -126,6 +126,21 @@ Unit runLoop(this Tape, ops ListRef<Op>) mut {
   return Unit();
 }
 
+// runArray's machine: the tape, the commands, their jumps and the counter.
+type ArrayMachine = #struct {
+  tape Tape;
+  commands List<Int>;
+  jumps List<Int>;
+  pc Int;
+}
+
+ArrayMachine(commands List<Int>, jumps List<Int>) => init {
+  tape=Tape();
+  commands;
+  jumps;
+  pc=Int(1);
+}
+
 Int runArray(source String) {
   commands List<Int> = List(Int);
   i Int=Int(1);
@@ -154,32 +169,33 @@ Int runArray(source String) {
   if(stack:size()>0) {
     return Int(0);
   }
-  tape Tape=Tape();
-  pc Int=Int(1);
-  step Int=Int(1);
-  step!to(Int(9223372036854775807)) {
-    if(pc>commands:size()) {
-      return tape.result;
-    }
+  if(commands:size()==0) {
+    return Int(0);
+  }
+  // The fetch loop is a worker: its state is the machine, and each step
+  // runs one command, until the counter passes the last.
+  machine ArrayMachine=ArrayMachine(commands, jumps);
+  machine!work(Bool(this ArrayMachine) mut {
     // A bracket that jumps lands on its partner, and the step past it
     // skips that one, as in C.
-    c Int=commands[pc];
+    c Int=this.commands[this.pc];
     bracket Bool=if(c==91) {
-      if(tape.bytes[tape.position]==U8(0)) {
-        pc=jumps[pc];
+      if(this.tape.bytes[this.tape.position]==U8(0)) {
+        this.pc=this.jumps[this.pc];
       }
     }
     bracket!elif(c==93) {
-      if(tape.bytes[tape.position]~=U8(0)) {
-        pc=jumps[pc];
+      if(this.tape.bytes[this.tape.position]~=U8(0)) {
+        this.pc=this.jumps[this.pc];
       }
     }
     bracket:else() {
-      tape!arrayCommand(c);
+      this.tape!arrayCommand(c);
     }
-    pc=pc+1;
-  }
-  return tape.result;
+    this.pc=this.pc+1;
+    return this.pc<=this.commands:size();
+  });
+  return machine.tape.result;
 }
 
 Int runRecursive(source String) {

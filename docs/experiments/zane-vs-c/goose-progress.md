@@ -970,3 +970,28 @@ which the idiom does not take.
 program it changes `fannkuch$step` alone (the only function whose call
 sites of `memmove`/`memcpy` differ). Fannkuchredux 1.63 → 1.43 s (Goose
 1.35); 50/50 checks pass. On.
+
+### Compress::ArithDecode: two tries, neither kept
+
+Medians of 7 with `ZANE_NO_COPY_IDIOM`: 1.29 s against Goose/clang 1.13
+(1.14×). Sampled: 97% in `step` (decode inlined); the most samples
+(12%) just after the 64-bit `idiv` by `range`, which varies per symbol
+and which Goose makes too (as `div`; on this Emerald Rapids core the two
+cost about the same). The rest is spread: the binary search, the bit
+reader (`position/8`, a check and a byte load per bit), and the
+decoder's fields (`low`, `high`, `value`, the reader's position) stored
+to the frame each time round `normalize`.
+
+- The bit reader as Goose's `BitInputStream` (the current byte kept, a
+  bit position, the next byte read every 8 bits): 1.31 → 1.44 s, slower
+  (one more field stored to the frame per bit, and a branch). Reverted.
+- The stores: frame shadow keeps a slot's reads in registers but writes
+  the frame at each store, and LLVM may not sink a store out of a loop
+  into memory another thread could see (the frame's address is in the
+  scope chain). Tried writing shadowed slots back only before calls and
+  returns (`ZANE_SHADOW_LAZY`) for frames whose slot addresses go
+  nowhere else; every one of the 73 shadowed frames in this program has
+  such an address (a callee that may keep it), so it never applied.
+  Doing it for those would take a write-back before each access that
+  may alias a slot, which needs alias information this pass has not.
+  Dropped, not committed.

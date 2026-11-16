@@ -1052,3 +1052,18 @@ cost more than the check they save. Off.
 
 NeuralNet stays at about 1.15×: the cost of the two checks of loaded
 indices, which Goose's references do not make.
+
+### Compress::LZWEncode: the hash's tail
+
+Medians of 7: 0.743 s against Goose/clang 0.668 (1.11×). Under callgrind
+(8 iterations) it is 506 M instructions to Goose's 465 M, and the same
+algorithm: a key is a range of one byte list, hashed, probed for and
+compared. `zane_bytes_hash` mispredicted twice as often as Goose's hash
+(1.35 M to 0.68 M), on the branches after its word loop: on `n & 7`, then
+on the tail's size. The tail is now taken as Goose's standard library
+takes a short key's: the words before the last 8 bytes, then those 8 as
+one load that may overlap. 0.743 → 0.736 s. 71% of the keys hashed are
+32 bytes or longer, about 80 on average, so the time is the lanes rather
+than the tail. The rest of the gap is spread over the hash, the compare
+(`memcmp`, which misses the cache as often as Goose's `gs_memeq_long`
+does) and the probe loop. 50/50 checks pass.

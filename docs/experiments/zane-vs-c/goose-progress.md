@@ -1019,3 +1019,9 @@ bitcode): a C byte store, which may alias anything, so LLVM reloads the
 buffer's handle after it. Goose's is a `u8[>..]`; the port now uses a
 `List<U8>` (`List(limit + 1, 1)`), whose element stores carry the
 compiler's byte tag. 2.82 → 2.56 s (Goose 2.50). 50/50 checks pass.
+
+The same for ArithDecode's output: a `Buffer` pushed one byte per symbol
+(the port's C, a store LLVM takes to alias anything), now a `List<U8>`
+as Goose's `u8[>..]`: 1.316 → 1.280 s (Goose 1.124). The C runtime's
+own tags could not help: C's TBAA and the compiler's have different
+roots, which LLVM never tells apart.

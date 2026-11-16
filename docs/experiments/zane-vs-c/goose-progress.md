@@ -1067,3 +1067,19 @@ one load that may overlap. 0.743 → 0.736 s. 71% of the keys hashed are
 than the tail. The rest of the gap is spread over the hash, the compare
 (`memcmp`, which misses the cache as often as Goose's `gs_memeq_long`
 does) and the probe loop. 50/50 checks pass.
+
+### Step 30: all 50 tests again
+
+The binary after the LZW hash change, with the switches of `sw.sh`
+(`ZANE_SHADOW_REFILL` and `ZANE_NO_COPY_IDIOM` now on), against both of
+Goose's builds: three interleaved rounds, in `step30-goose.json` and
+`step30-goose.md`. Geomean Zane / Goose-clang 0.973 (faster on 20 of 50;
+step 29 0.984, 19), Zane / Goose-gcc 0.834 (faster on 34; step 29 0.833).
+
+Since step 29: Sieve 1.21 → 0.92, Fannkuchredux 1.20 → 1.07, Matmul::T16
+1.13 → 1.05, ArithDecode 1.18 → 1.12, LZWEncode 1.15 → 1.13. The worst
+now: ArithEncode 1.39, Maze::Generator 1.29 (1.19 at step 29; this test
+swings), LogParser 1.26, SHA256 1.23, NeuralNet 1.18 (the synapse checks
+above), HuffDecode 1.16, Matmul::T8 1.15 (1.09 at step 29; T8 and T4
+swing by as much between rounds), Graph::BFS 1.15, CSV::Parse 1.14,
+Binarytrees::Obj 1.14.

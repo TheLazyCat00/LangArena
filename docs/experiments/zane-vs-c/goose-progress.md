@@ -1083,3 +1083,24 @@ swings), LogParser 1.26, SHA256 1.23, NeuralNet 1.18 (the synapse checks
 above), HuffDecode 1.16, Matmul::T8 1.15 (1.09 at step 29; T8 and T4
 swing by as much between rounds), Graph::BFS 1.15, CSV::Parse 1.14,
 Binarytrees::Obj 1.14.
+
+### Compress::HuffDecode: the push's count, the current node's check
+
+Medians of 7: 0.846 s against Goose/clang 0.778 (1.09×). Under callgrind
+(35 iterations) it is 1,912 M instructions to Goose's 1,465 M. Half the
+bits reach a leaf. A bit is 14 instructions to Goose's 10, and a leaf 9
+to 7. Goose follows unchecked node pointers; the port follows checked
+32-bit indices into the node list, scaled by 16 each time. The check of
+the current node repeats at every bit, though on the path from a node
+that is not a leaf the current node is the child just checked. The push
+loaded and stored the output list's count in the frame.
+
+Frame_shadow had left the count and the room out of its slots: one
+`<2 x i32>` store wrote both (`ZANE_FRAME_SHADOW_WHY=1` now prints each
+offset refused and the accesses that overlap it). `ZANE_SHADOW_SPLIT=1`
+makes such a vector load or store of the frame one per element first.
+Both are then slots and the load goes, but the frame is escaped, so each
+store stays: 1,912 → 1,897 M instructions, 0.846 → 0.856 s, within the
+noise. Off. Constraint elimination and jump threading added to
+Frame_shadow's passes (`ZANE_SHADOW_AGAIN`) did not remove the repeated
+check: 1,912 M.

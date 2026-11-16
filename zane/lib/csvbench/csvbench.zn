@@ -34,23 +34,23 @@ Unit prepare(this State) mut {
 }
 
 // The bytes `a`, `b` and `c` as a set `findAny` takes.
-List<U8> setOf(a Int, b Int, c Int) {
+ByteSet setOf(a Int, b Int, c Int) {
   members List<Bool> = filled(Int(256), Bool(false));
   members[a+1]=Bool(true);
   members[b+1]=Bool(true);
   members[c+1]=Bool(true);
-  return rxTable(members, Int(0));
+  return members:byteSet();
 }
 
 // Where the quoted field whose bytes start at `from` (counted from 0)
 // ends: at its closing quote, a doubled quote inside it passed over; -1
 // if it has none.
-Int closing(text String, from Int, quote List<U8>) {
+Int closing(text String, from Int, quote ByteSet) {
   n Int=text:byteCount();
   at Int=from;
   k Int=Int(1);
   k!to(n+1) {
-    q Int=text:findAny(at, n-at, quote);
+    q Int=text:findAny(at+1, n-at, quote)-1;
     if(q<0) {
       return q;
     }
@@ -73,8 +73,8 @@ Int closing(text String, from Int, quote List<U8>) {
 // not six fields or a field that spells no number gives no points.
 List<Float> points(text String) {
   out List<Float> = List(Float);
-  quote List<U8> = setOf(Int(34), Int(34), Int(34));
-  plain List<U8> = setOf(Int(44), Int(10), Int(34));
+  quote ByteSet = setOf(Int(34), Int(34), Int(34));
+  plain ByteSet = setOf(Int(44), Int(10), Int(34));
   n Int=text:byteCount();
   column Int=Int(0);
   x Float=Float(0.0);
@@ -114,7 +114,7 @@ List<Float> points(text String) {
       }
     }
     form:else() {
-      end=text:findAny(pos, n-pos, plain);
+      end=text:findAny(pos+1, n-pos, plain)-1;
       if(end<0) {
         end=n;
       }

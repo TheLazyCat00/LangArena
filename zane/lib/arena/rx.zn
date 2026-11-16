@@ -50,22 +50,22 @@ type Rx = struct {
   reverse RxTable;
   // The prefix test: every match is at least `least` bytes long, and its
   // bytes at offsets `at1` and `at2` are in `set1` and `set2`, each a
-  // byte table as `findPair` reads it (rxTable). How a search skips
+  // byte set (rxTable). How a search skips
   // where the forward DFA is in its start state: 0 not at all, 1 by the
   // prefix test, 2 by the inner byte: every match holds a byte of `inner`
   // right after a part whose own bytes are never in it, and `before` is
   // the reverse DFA of that part.
   skip Int;
-  inner List<U8>;
+  inner ByteSet;
   before RxTable;
   least Int;
   at1 Int;
   at2 Int;
-  set1 List<U8>;
-  set2 List<U8>;
+  set1 ByteSet;
+  set2 ByteSet;
 }
 
-Rx(nullable Bool, classes List<I32>, forward RxTable, reverse RxTable, skip Int, inner List<U8>, before RxTable, least Int, at1 Int, at2 Int, set1 List<U8>, set2 List<U8>) => init {
+Rx(nullable Bool, classes List<I32>, forward RxTable, reverse RxTable, skip Int, inner ByteSet, before RxTable, least Int, at1 Int, at2 Int, set1 ByteSet, set2 ByteSet) => init {
   nullable;
   classes;
   forward;
@@ -999,8 +999,8 @@ Rx rx(pattern String, insensitive Bool) {
     partEntry=r!emit(part, partMatch, Bool(true));
   }
   r.seen=filled(r.ops:size(), Int(0));
-  set1 List<U8> = rxTable(prefix, at1);
-  set2 List<U8> = rxTable(prefix, at2);
+  set1 ByteSet = rxTable(prefix, at1);
+  set2 ByteSet = rxTable(prefix, at2);
   // The byte classes: two bytes share one when every set treats them
   // alike.
   classes List<Int> = filled(Int(256), Int(0));
@@ -1036,81 +1036,18 @@ Rx rx(pattern String, insensitive Bool) {
   return Rx(nullable, r.classes, forward, reverse, skip, rxTable(inner, Int(0)), beforeTable, positions, at1, at2, set1, set2);
 }
 
-// The byte set at position `at` (from 0) of `prefix`, as the runtime's
-// `findPair` reads one: 1 for each of the 256 bytes in it, then 16 bytes
-// where bit k of the j-th stands for the byte k*16+j, then 16 where it
-// stands for 128+k*16+j; then, as Goose's byte sets, how a block test
-// reads it: its kind (1 to 3: that many bytes, 4: a range, 5: the
-// tables), whether the test is complemented, and the bytes (a range's
-// first and width), at bytes 289, 290 and 291 to 293 from 0 (the
-// runtime's zane_set_kind and zane_bsm_init), which are 290, 291 and 292
-// to 294 here.
-List<U8> rxTable(prefix List<Bool>, at Int) {
-  out List<U8> = filled(Int(294), U8.wrap(Int(0)));
-  out[Int(290)]=U8.wrap(Int(5));
-  if(prefix:size()<(at+1)*256) {
-    return out;
-  }
-  b Int=Int(0);
-  b!to(Int(255)) {
-    if(prefix[at*256+b+1]) {
-      out[b+1]=U8.wrap(Int(1));
-      j Int=bitAnd(b, Int(15));
-      bit Int=shiftLeft(Int(1), bitAnd(shiftRightLogical(b, Int(4)), Int(7)));
-      slot Int=257+j;
-      if(b>=128) {
-        slot=273+j;
-      }
-      out[slot]=U8.wrap(bitOr(Int(out[slot]), bit));
+// The byte set at position `at` (from 0) of `prefix`, whose 256 flags for
+// that position start at element at*256+1; empty when `prefix` has none
+// there.
+ByteSet rxTable(prefix List<Bool>, at Int) {
+  members List<Bool> = filled(Int(256), Bool(false));
+  if(prefix:size()>=(at+1)*256) {
+    b Int=Int(1);
+    b!to(Int(256)) {
+      members[b]=prefix[at*256+b];
     }
   }
-  return rxKind(out);
-}
-
-// The block test's kind for set `out` (rxTable), as Goose's
-// gs_byteset_kind: up to three members, or up to three non-members
-// complemented, or one run of members.
-List<U8> rxKind(set List<U8>) {
-  out List<U8> = set;
-  members Int=Int(0);
-  lowest Int=Int(256);
-  highest Int=Int(0)-Int(1);
-  b Int=Int(0);
-  b!to(Int(255)) {
-    if(Int(out[b+1])==1) {
-      members=members+1;
-      lowest=min(lowest, b);
-      highest=max(highest, b);
-    }
-  }
-  if(members==0 or members==256) {
-    return out;
-  }
-  inSet Bool=members<=3;
-  outSet Bool=256-members<=3;
-  if(inSet or outSet) {
-    want Int=Int(1);
-    if(outSet and ~inSet) {
-      want=Int(0);
-      out[Int(291)]=U8.wrap(Int(1));
-    }
-    k Int=Int(0);
-    c Int=Int(0);
-    c!to(Int(255)) {
-      if(Int(out[c+1])==want) {
-        out[Int(292)+k]=U8.wrap(c);
-        k=k+1;
-      }
-    }
-    out[Int(290)]=U8.wrap(k);
-    return out;
-  }
-  if(highest-lowest+1==members) {
-    out[Int(290)]=U8.wrap(Int(4));
-    out[Int(292)]=U8.wrap(lowest);
-    out[Int(293)]=U8.wrap(highest-lowest);
-  }
-  return out;
+  return members:byteSet();
 }
 
 // --- searching -------------------------------------------------------------------
@@ -1123,7 +1060,7 @@ Int skipPrefix(this Rx, text String, i Int) {
   if(i>=fits) {
     return n;
   }
-  p Int=text:findPair(i+this.at1, fits-i, this.set1, this.at2-this.at1, this.set2);
+  p Int=text:findPair(i+this.at1+1, fits-i, this.set1, this.at2-this.at1, this.set2)-1;
   if(p<0) {
     return n;
   }
@@ -1143,7 +1080,7 @@ Int skipInner(this Rx, text String, i Int) {
     if(q>=n) {
       return n;
     }
-    f Int=text:findAny(q, n-q, this.inner);
+    f Int=text:findAny(q+1, n-q, this.inner)-1;
     if(f<0) {
       return n;
     }

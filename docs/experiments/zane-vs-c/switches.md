@@ -1,8 +1,8 @@
 # Compiler switches in the Zane-vs-Goose builds
 
 Which experimental `ZANE_*` switches of the compiler (branch
-`experiment/zane-vs-goose`) the LangArena builds use, as of step 27
-(`step27-goose.md`, geomean Zane / Goose-clang 0.982). The measurements
+`experiment/zane-vs-goose`) the LangArena builds use, as of step 30
+(`step30-goose.md`, geomean Zane / Goose-clang 0.973). The measurements
 behind each are in `goose-progress.md`, or in the compiler's
 `docs/experiments/` where noted.
 
@@ -14,7 +14,7 @@ ZANE_FRAME_SHADOW=1 ZANE_MERGE_CHECKS=1 ZANE_ENDLESS=1 ZANE_SIZED_TBAA=1
 ZANE_FRAME_SCOPES=1 ZANE_ARM_CHECKS=1 ZANE_STRIP=1 ZANE_RANGE_CHECKS=1
 ZANE_REHOME=1 ZANE_LIST_SPANS=16384 ZANE_IDLE_SEARCH=1 ZANE_DIV_CACHE=1
 ZANE_CONST_ARRAYS=1 ZANE_LITERAL_LOCALS=1 ZANE_BIASED_BASE=1 ZANE_UNROLL_SMALL=8
-ZANE_LOOP_INLINE=128 ZANE_LEAF_PEEL=1 ZANE_SHADOW_REFILL=1
+ZANE_LOOP_INLINE=128 ZANE_LEAF_PEEL=1 ZANE_SHADOW_REFILL=1 ZANE_NO_COPY_IDIOM=1
 ```
 
 `ZANE_LOOP_INLINE=128` is from after step 27: a call in a loop to a small
@@ -25,6 +25,8 @@ with no call, as Goose's compiler emits Binarytrees' `build`.
 `ZANE_SHADOW_REFILL=1` after step 28: frame shadow fills again after a
 `memset`/`memcpy` of a constant length, or a list growth call, only the
 slots it may write, not every slot (Brainfuck::Array 1.89 → 1.70 s).
+`ZANE_NO_COPY_IDIOM=1` after step 29: an element-by-element copy loop
+stays a loop rather than a `memmove` call (Fannkuchredux 1.63 → 1.43 s).
 
 The last three are from step 27's round:
 

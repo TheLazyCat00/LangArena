@@ -955,3 +955,18 @@ scalars: the only stores left are the eight after the loop, and SLP
 groups lanes 1–4 of them, leaving 0 and 5–7 scalar. `-slp-threshold=-6`
 changes nothing. Open: a strip-mined loop shape in the compiler for an
 array indexed by the loop counter modulo a small constant.
+
+### CLBG::Fannkuchredux: the rotation's `memmove`
+
+Medians of 7: 1.63 s against Goose/clang 1.35 (1.21×). Sampled: 88% in
+`step` (`flip` and `advance` inlined), 9% in libc's `memmove`: the port's
+rotation `perm1[i] = perm1[i + 1]` for i in 1..r is a copy loop, which
+LLVM's loop idiom pass makes a `memmove` call, of r elements with r
+mostly 1 or 2, once per permutation. Goose's port rotates by swaps,
+which the idiom does not take.
+
+`ZANE_NO_COPY_IDIOM=1` (new, compiler `passes.ml`): LLVM's
+`-disable-loop-idiom-memcpy`, so element-copy loops stay loops. In this
+program it changes `fannkuch$step` alone (the only function whose call
+sites of `memmove`/`memcpy` differ). Fannkuchredux 1.63 → 1.43 s (Goose
+1.35); 50/50 checks pass. On.

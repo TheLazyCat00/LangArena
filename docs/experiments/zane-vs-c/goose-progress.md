@@ -924,3 +924,17 @@ Against the step-28 build plus `ZANE_LEAF_PEEL`:
   Binarytrees::Obj −8%, but Maze::AStar +7% (the heap's sift-up loop
   inlined into `step`) and CSV::Parse noisy. Off: a budget that takes
   `emit` but not the heap's push would be fitted to the benchmark.
+
+## Re-measure (step 29, `step29-goose.json`, `step29-goose.md`)
+
+Step 28's switches plus `ZANE_LEAF_PEEL=1` and `ZANE_SHADOW_REFILL=1`,
+and the `rx` byte-set fix; 3 interleaved rounds, minimums, same container
+as step 28.
+
+- Geomean Zane / Goose-clang 0.984 (faster on 19 of 50), Zane /
+  Goose-gcc 0.833 (faster on 34). Step 28: 1.006 and 0.856.
+- Worst vs clang: ArithEncode 1.31, SHA256 1.29, LogParser 1.23, Sieve
+  1.21, HuffDecode 1.20, Fannkuchredux 1.20, Maze::Generator 1.19,
+  ArithDecode 1.18, NeuralNet 1.16, CSV::Parse 1.16.
+- Binarytrees::Arena and Obj are no longer among them (LEAF_PEEL), nor
+  Brainfuck::Array (SHADOW_REFILL).

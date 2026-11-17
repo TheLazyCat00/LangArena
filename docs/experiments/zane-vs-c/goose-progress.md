@@ -1133,3 +1133,7 @@ dependency unoptimized on every build, so the DFA loop keeps every value in
 the frame. Under callgrind `_findEnd` is 8.5 G instructions to `findEnd`'s
 2.1 G, with the same skip-loop calls. A `source` dependency is compiled
 optimized; switching core to one needs a core tag that has `regex`.
+
+Core is a `source` dependency now (`core v0.13 source`; v0.13 is cdd6570),
+which the CLI compiles optimized. Medians of 5: LogParser 0.28 s against
+0.25 s for `rx.zn` inside the program; Template::Regex 2.07 s against 1.3 s.

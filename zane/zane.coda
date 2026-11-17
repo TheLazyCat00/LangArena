@@ -3,5 +3,5 @@ version-pattern v*.+
 
 deps [
     key version from
-    core v0.11 /home/user/core
+    core v0.13 source
 ]

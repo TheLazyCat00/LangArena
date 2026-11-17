@@ -1137,3 +1137,8 @@ optimized; switching core to one needs a core tag that has `regex`.
 Core is a `source` dependency now (`core v0.13 source`; v0.13 is cdd6570),
 which the CLI compiles optimized. Medians of 5: LogParser 0.28 s against
 0.25 s for `rx.zn` inside the program; Template::Regex 2.07 s against 1.3 s.
+
+Core at v0.14 (810332e), whose `_spans` runs the forward and reverse DFAs
+directly instead of building a list per match (zane-lang/std#20). Medians of
+5: LogParser 0.26 s and Template::Regex 1.26 s, against 0.25 s and 1.3 s for
+`rx.zn` inside the program. Both are at par with it now.

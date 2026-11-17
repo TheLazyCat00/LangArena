@@ -1104,3 +1104,21 @@ store stays: 1,912 → 1,897 M instructions, 0.846 → 0.856 s, within the
 noise. Off. Constraint elimination and jump threading added to
 Frame_shadow's passes (`ZANE_SHADOW_AGAIN`) did not remove the repeated
 check: 1,912 M.
+
+### The regex engine moves into core
+
+`zane/lib/arena/rx.zn` and its tests are gone: the engine is now core's
+`regex` package (zane-lang/core branch `regex`, pinned at f6756e2 until it
+merges), with a public API (`regex$compile`, `Regex:count`, `findAll`,
+`captures`), anchors, word boundaries, inline flags and capture groups.
+LogParser and Template::Regex import it qualified (`import regex;`), since
+`arena`'s own `Regex` would collide; LogParser's case-insensitive patterns
+gain `(?i)`. Checksums are unchanged.
+
+Built as a library, the engine is 7–8× slower than as part of the program:
+LogParser 2.2 s against 0.3 s, Template::Regex 12 s against 1.4 s. A
+library object keeps every snapshot (the compiler's lowering.md §9), so
+each read of the DFA's transition list in `_findEnd` calls `zane_snapshot`
+(147 M calls under callgrind). The fix belongs in the compiler: a
+dependency compiled for a program build gets the program's write-back
+places. Until it lands, these two rows measure that, not the engine.

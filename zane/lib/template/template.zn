@@ -2,6 +2,7 @@ package template;
 import core$;
 import math$;
 import arena$;
+import regex;
 String firstName(index Int) {
   if(index==0) {
     return String("John");
@@ -84,7 +85,7 @@ type State = #struct {
   values List<U8>;
   valueStarts List<Int>;
   valueLengths List<Int>;
-  pattern Rx;
+  pattern regex$Regex;
   result Int;
   parse Bool;
 }
@@ -99,7 +100,7 @@ State(cfg Config, name String) => init {
   values=List(U8);
   valueStarts=List(Int);
   valueLengths=List(Int);
-  pattern=rx("[{][{](.*?)[}][}]", Bool(false));
+  pattern=regex$compile("[{][{](.*?)[}][}]") ?? regex$Regex.never();
   result=Int(0);
   parse=name=="Template::Parse";
 }
@@ -234,13 +235,13 @@ Unit renderParse(this State) mut {
 }
 
 Unit renderRegex(this State) mut {
-  found List<Int> = this.pattern:matches(this.source);
+  found List<regex$Match> = this.pattern:findAll(this.source);
   out List<U8> = List(U8);
   position Int=Int(1);
   i Int=Int(1);
-  i!to(found:size()/2) {
-    start Int=found[i*2-1]+1;
-    end Int=found[i*2]+1;
+  i!to(found:size()) {
+    start Int=found[i].start;
+    end Int=found[i]:end();
     out!appendRange(this.bytes, position, start-position);
     out!substitute(this, start+2, end-3);
     position=end;

@@ -10,7 +10,7 @@ Install the [Zane CLI](https://github.com/zane-lang/zane), then:
 
 ```sh
 cd zane
-zane toolchain install v0.37
+zane toolchain install v0.39
 zane fetch
 ./test.sh                    # all test.js checksums
 ./run                     # full run.js workloads
@@ -75,7 +75,7 @@ TEST=1 ruby benchmarks.rb Zane
 PROD=1 ruby benchmarks.rb Zane
 ```
 
-The image pins CLI v0.15 with its SHA-256 and installs compiler v0.37.
+The image pins CLI v0.16 with its SHA-256 and installs compiler v0.39.
 The suite records both versions. Source-size measurements include bindings
 and exclude everything under `lib/arena/vendor`.
 

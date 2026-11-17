@@ -24,11 +24,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Install pinned Zane tools
         run: |
-          curl -fLsS https://github.com/zane-lang/zane/releases/download/v0.15/zane-linux-x86_64 -o "$RUNNER_TEMP/zane"
-          echo "d5f89774a8694c9cabe5a0782d46cc1e2f1a9e5f03c790a4b8480b66f8346232  $RUNNER_TEMP/zane" | sha256sum -c -
+          curl -fLsS https://github.com/zane-lang/zane/releases/download/v0.16/zane-linux-x86_64 -o "$RUNNER_TEMP/zane"
+          echo "074d43d3f4387073edec3fc576ebb4d61b84cc600fe8c7a01384b37781c6fc10  $RUNNER_TEMP/zane" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/zane"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/zane" toolchain install v0.37
+          "$RUNNER_TEMP/zane" toolchain install v0.39
       - name: Install PCRE2, which the arena package links for regular expressions
         run: sudo apt-get update && sudo apt-get install -y libpcre2-dev
       - name: Fetch and build

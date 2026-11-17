@@ -6,7 +6,9 @@ package, from [`zane-lang/std`](https://github.com/zane-lang/std)).
 
 ## Run
 
-Install the [Zane CLI](https://github.com/zane-lang/zane), then:
+Install the [Zane CLI](https://github.com/zane-lang/zane) and the PCRE2
+development files (`libpcre2-dev` on Debian and Ubuntu), which the `arena`
+package links, then:
 
 ```sh
 cd zane
@@ -46,7 +48,7 @@ runtime pool before measurement.
 C supplies APIs core does not have: JSON through yyjson,
 Base64 through aklomp/base64 (the library C links, with the codec it picks
 for the processor at run time), mutable byte storage, string byte access,
-decimal formatting, file input and timing. CSV::Parse reads its fields and Sort::Self sorts in Zane, with core's `parseFloat(start, count)` and `sort`; LogParser and Template::Regex match with core's `regex` package. PCRE2 with its JIT (the system `libpcre2-8`, which C also links) remains only for `test/codecs`.
+decimal formatting, file input and timing. CSV::Parse reads its fields and Sort::Self sorts in Zane, with core's `parseFloat(start, count)` and `sort`; LogParser and Template::Regex match with core's `regex` package. The `arena` package still links PCRE2 (the system `libpcre2-8`, as C does); only `test/codecs` uses it.
 Foreign data handles own their allocations. Only the root's foreign `Host`
 capability reads files, observes clocks, prints, or exits; computation
 bindings have no mutable global state.

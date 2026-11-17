@@ -84,13 +84,8 @@ List<Float> points(text String) {
   k Int=Int(1);
   k!to(n+1) {
     if(pos>=n) {
-      // A last row with no line break after it.
-      if(column==5) {
-        out!push(x);
-        out!push(y);
-        out!push(z);
-        return out;
-      }
+      // The text ends right after a separator: cleanly after a line
+      // break, or after a comma whose field is missing.
       if(column==0) {
         return out;
       }
@@ -139,21 +134,30 @@ List<Float> points(text String) {
         y=v;
       }
     }
-    if(pos<n) {
-      c Int=Int(text:byteAt(pos+1));
-      pos=pos+1;
-      row Bool=if(c==44) {
-        column=column+1;
+    if(pos>=n) {
+      // A last row with no line break after it: whole only if this field
+      // is its sixth.
+      if(column~=5) {
+        return List(Float);
       }
-      row:else() {
-        if(column~=5) {
-          return List(Float);
-        }
-        out!push(x);
-        out!push(y);
-        out!push(z);
-        column=Int(0);
+      out!push(x);
+      out!push(y);
+      out!push(z);
+      return out;
+    }
+    c Int=Int(text:byteAt(pos+1));
+    pos=pos+1;
+    row Bool=if(c==44) {
+      column=column+1;
+    }
+    row:else() {
+      if(column~=5) {
+        return List(Float);
       }
+      out!push(x);
+      out!push(y);
+      out!push(z);
+      column=Int(0);
     }
   }
   return out;

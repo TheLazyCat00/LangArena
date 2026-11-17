@@ -68,6 +68,10 @@ Visit(vertex Int, distance Int) => init {
 }
 
 Int bfs(this State) {
+  // The start is the target: a path of length 0, as C's search.
+  if(this.vertices==1) {
+    return Int(0);
+  }
   visited List<Bool> = filled(this.vertices, Bool(false));
   queue List<Visit> = List(Visit);
   queue!push(Visit(Int(1), Int(0)));
@@ -109,14 +113,18 @@ Int edges(this State) {
 
 // The search stops when its stack is empty: a vertex is expanded once,
 // and pushes one entry per edge, so the stack takes at most the start and
-// one entry per edge.
+// one entry per edge, and one more pass finds it empty.
 Int dfs(this State) {
+  // The start is the target: a path of length 0, as C's search.
+  if(this.vertices==1) {
+    return Int(0);
+  }
   visited List<Bool> = filled(this.vertices, Bool(false));
   stack List<Visit> = List(Visit);
   stack!push(Visit(Int(1), Int(0)));
   best Int=Int(2147483647);
   iteration Int=Int(1);
-  iteration!to(this:edges()+1) {
+  iteration!to(this:edges()+2) {
     if(stack:size()==0) {
       if(best==2147483647) {
         return ~Int(1);

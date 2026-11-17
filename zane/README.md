@@ -1,7 +1,8 @@
 # Zane
 
 All 50 LangArena workloads, ported from the Crystal reference. The manifest
-pins compiler **v0.37** and core **v0.11**.
+pins compiler **v0.38** and core **v0.11**; the lock pins core's `regex`
+branch until it merges.
 
 ## Run
 
@@ -44,9 +45,8 @@ runtime pool before measurement.
 
 C supplies APIs missing from core v0.11: JSON through yyjson,
 Base64 through aklomp/base64 (the library C links, with the codec it picks
-for the processor at run time), regular expressions through PCRE2 with its JIT (the system
-`libpcre2-8`, which C also links), mutable byte storage, string byte access,
-decimal formatting, file input and timing. CSV::Parse reads its fields and Sort::Self sorts in Zane, with core's `parseFloat(start, count)` and `sort`.
+for the processor at run time), mutable byte storage, string byte access,
+decimal formatting, file input and timing. CSV::Parse reads its fields and Sort::Self sorts in Zane, with core's `parseFloat(start, count)` and `sort`; LogParser and Template::Regex match with core's `regex` package. PCRE2 with its JIT (the system `libpcre2-8`, which C also links) remains only for `test/codecs`.
 Foreign data handles own their allocations. Only the root's foreign `Host`
 capability reads files, observes clocks, prints, or exits; computation
 bindings have no mutable global state.

@@ -1122,3 +1122,14 @@ each read of the DFA's transition list in `_findEnd` calls `zane_snapshot`
 (147 M calls under callgrind). The fix belongs in the compiler: a
 dependency compiled for a program build gets the program's write-back
 places. Until it lands, these two rows measure that, not the engine.
+
+Core's `regex` merged (zane-lang/core#19, cdd6570) and requires compiler
+v0.39, which carries the fix (zane-lang/compiler#390, #391; the CLI side is
+zane-lang/zane#40, #41). The pins follow. Medians of 3 now: LogParser 0.70 s,
+Template::Regex 3.68 s, against 0.25 s and 1.3 s for `rx.zn` inside the
+program. The snapshots are gone from `_findEnd`; what is left is that core is
+a path dependency here (`from /home/user/core`), and the CLI compiles a path
+dependency unoptimized on every build, so the DFA loop keeps every value in
+the frame. Under callgrind `_findEnd` is 8.5 G instructions to `findEnd`'s
+2.1 G, with the same skip-loop calls. A `source` dependency is compiled
+optimized; switching core to one needs a core tag that has `regex`.

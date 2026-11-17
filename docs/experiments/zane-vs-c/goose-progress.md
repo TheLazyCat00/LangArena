@@ -1142,3 +1142,20 @@ Core at v0.14 (810332e), whose `_spans` runs the forward and reverse DFAs
 directly instead of building a list per match (zane-lang/std#20). Medians of
 5: LogParser 0.26 s and Template::Regex 1.26 s, against 0.25 s and 1.3 s for
 `rx.zn` inside the program. Both are at par with it now.
+
+### Step 31: all 50 tests, released toolchain
+
+The port as a user builds it: compiler v0.39 (the release, no switches),
+core v0.14 as a `source` dependency. Against Goose v2026.4 (the release
+archive; the port's C at `-O2` by gcc 13 and clang 18) and LangArena's C
+(`make prod`). All 50 checks pass on all four. `tri.py 3`, pinned to CPU 2,
+interleaved; `step31-goose.json`, table by `rep4.py` in `step31-goose.md`.
+Geomeans: Zane / Goose-clang 0.974 (faster on 22 of 50), Zane / Goose-gcc
+0.792 (faster on 36), Zane / C 0.642 (faster on 32).
+
+Worst against Goose-clang: ArithEncode 1.36, SHA256 1.31, LZWEncode 1.24,
+LZWDecode 1.22, Graph::BFS 1.22, LogParser 1.20, Sort::Quick 1.20,
+Calculator::Ast 1.19. Template::Regex 1.07 (C 0.67). Against C, Zane is
+slower on CacheSimulation 1.26, Sort::Quick 1.19, Base64 1.14–1.16 and
+Brainfuck 1.10–1.12. This container runs every binary faster than step 30's
+did, so compare ratios, not seconds, across steps.
